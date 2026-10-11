@@ -4,6 +4,17 @@
 // =====================================================================
 import { gameTotals, scoreHand, bidValue, teamOf } from './scoring.js';
 
+/**
+ * Joueurs à qui une prise est attribuée.
+ * Prise solo : le preneur seul. Prise partagée (le partenaire avait aussi annoncé) : les deux.
+ */
+export function contractors(h, teams) {
+  if (!h.taker) return [];
+  if (!h.shared) return [h.taker];
+  const team = teams.find((t) => t.includes(h.taker)) || [h.taker];
+  return [...team];
+}
+
 const pct = (num, den) => (den > 0 ? (100 * num) / den : null);
 const mean = (arr) => (arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null);
 
@@ -34,6 +45,8 @@ function emptyStats(id) {
     games: 0, wins: 0, losses: 0, winPct: null, lossPct: null,
     handsPlayed: 0,
     takes: 0, takesMade: 0, takesFailed: 0, takeMadePct: null, takeFailPct: null,
+    soloTakes: 0, soloMade: 0, soloPct: null,
+    sharedTakes: 0, sharedMade: 0, sharedPct: null,
     avgPointsMade: null, avgBid: null,
     capots: 0, capotsAnnounced: 0, generales: 0,
     coinches: 0, coinchesWon: 0, coinchePct: null,
@@ -72,19 +85,24 @@ export function computeStats(players, games, hands, { minGamesForDuo = 2 } = {})
       for (const pid of all) if (get(pid)) get(pid).handsPlayed++;
 
       const att = row.attack;
-      const taker = get(h.taker);
-      if (taker) {
-        taker.takes++;
+      // Prise : attribuée au preneur seul (solo) ou aux deux partenaires (partagée)
+      for (const pid of contractors(h, teams)) {
+        const tk = get(pid);
+        if (!tk) continue;
+        tk.takes++;
+        if (h.shared) { tk.sharedTakes++; if (row.made) tk.sharedMade++; }
+        else { tk.soloTakes++; if (row.made) tk.soloMade++; }
         if (row.made) {
-          taker.takesMade++;
-          taker._made.push(row.scores[att]);
-          if (h.capot) taker.capots++;
-          if (h.bid === 'generale') taker.generales++;
-        } else taker.takesFailed++;
-        if (h.bid === 'capot') taker.capotsAnnounced++;
-        if (typeof bidValue(h.bid) === 'number' && bidValue(h.bid) <= 160) taker._bids.push(bidValue(h.bid));
-        taker.suitCounts[h.suit] = (taker.suitCounts[h.suit] || 0) + 1;
+          tk.takesMade++;
+          tk._made.push(row.scores[att]);
+          if (h.capot) tk.capots++;
+        } else tk.takesFailed++;
+        if (h.bid === 'capot') tk.capotsAnnounced++;
+        if (bidValue(h.bid) <= 160) tk._bids.push(bidValue(h.bid));
+        tk.suitCounts[h.suit] = (tk.suitCounts[h.suit] || 0) + 1;
       }
+      // La générale est un exploit individuel : elle reste au preneur
+      if (row.made && h.bid === 'generale' && get(h.taker)) get(h.taker).generales++;
       // Défenseurs : chute infligée ?
       for (const pid of teams[1 - att]) {
         const s = get(pid);
@@ -138,6 +156,8 @@ export function computeStats(players, games, hands, { minGamesForDuo = 2 } = {})
     s.lossPct = pct(s.losses, s.games);
     s.takeMadePct = pct(s.takesMade, s.takes);
     s.takeFailPct = pct(s.takesFailed, s.takes);
+    s.soloPct = pct(s.soloMade, s.soloTakes);
+    s.sharedPct = pct(s.sharedMade, s.sharedTakes);
     s.avgPointsMade = mean(s._made);
     s.avgBid = mean(s._bids);
     s.coinchePct = pct(s.coinchesWon, s.coinches);
@@ -189,14 +209,16 @@ export function computeDuos(games, hands) {
 export function gameStats(game, hands) {
   const out = {};
   for (const pid of [...game.teams[0], ...game.teams[1]]) {
-    out[pid] = { takes: 0, made: 0, coinches: 0, coinchesWon: 0, belotes: 0, points: 0 };
+    out[pid] = { takes: 0, made: 0, shared: 0, coinches: 0, coinchesWon: 0, belotes: 0, points: 0 };
   }
   for (const h of hands) {
     if (h.passed) continue;
     const r = scoreHand(h, game.teams, game.rules);
-    const t = out[h.taker];
-    if (t) {
+    for (const pid of contractors(h, game.teams)) {
+      const t = out[pid];
+      if (!t) continue;
       t.takes++;
+      if (h.shared) t.shared++;
       if (r.made) { t.made++; t.points += r.scores[r.attack]; }
     }
     if (h.coincheBy && out[h.coincheBy]) {
@@ -217,7 +239,9 @@ export { teamOf };
 // =====================================================================
 export const TIMELINE_STATS = [
   { key: 'winPct', label: '% de victoires', unit: '%' },
-  { key: 'takePct', label: '% de prises réussies', unit: '%' },
+  { key: 'takePct', label: '% de prises réussies (solo + partagées)', unit: '%' },
+  { key: 'soloPct', label: '% de prises solo réussies', unit: '%' },
+  { key: 'sharedPct', label: '% de prises partagées réussies', unit: '%' },
   { key: 'coinchePct', label: '% de contres réussis', unit: '%' },
   { key: 'defensePct', label: '% de chutes infligées en défense', unit: '%' },
   { key: 'avgPoints', label: 'Points moyens par contrat réussi', unit: 'pts' },
@@ -226,6 +250,7 @@ export const TIMELINE_STATS = [
   { key: 'wins', label: 'Parties gagnées', unit: '' },
   { key: 'takes', label: 'Prises tentées', unit: '' },
   { key: 'takesMade', label: 'Prises réussies', unit: '' },
+  { key: 'sharedTakes', label: 'Prises partagées', unit: '' },
   { key: 'coinchesWon', label: 'Contres réussis', unit: '' },
   { key: 'belotes', label: 'Belotes', unit: '' },
   { key: 'capots', label: 'Capots', unit: '' },
@@ -239,6 +264,7 @@ export const TIMELINE_STATS = [
 export function timeline(players, games, hands) {
   const acc = Object.fromEntries(players.map((p) => [p.id, {
     games: 0, wins: 0, takes: 0, takesMade: 0, made: [], bids: [],
+    soloTakes: 0, soloMade: 0, sharedTakes: 0, sharedMade: 0,
     coinches: 0, coinchesWon: 0, defenses: 0, defensesWon: 0, belotes: 0, capots: 0,
   }]));
   const evaluated = evaluateGames(games, hands)
@@ -253,9 +279,12 @@ export function timeline(players, games, hands) {
     for (const row of rows) {
       const h = row.hand;
       if (h.passed) continue;
-      const tk = acc[h.taker];
-      if (tk) {
+      for (const pid of contractors(h, teams)) {
+        const tk = acc[pid];
+        if (!tk) continue;
         tk.takes++;
+        if (h.shared) { tk.sharedTakes++; if (row.made) tk.sharedMade++; }
+        else { tk.soloTakes++; if (row.made) tk.soloMade++; }
         if (row.made) { tk.takesMade++; tk.made.push(row.scores[row.attack]); if (h.capot) tk.capots++; }
         const bv = bidValue(h.bid);
         if (bv <= 160) tk.bids.push(bv);
@@ -284,6 +313,9 @@ export function timeline(players, games, hands) {
         coinchesWon: a.coinchesWon, belotes: a.belotes, capots: a.capots,
         winPct: pct(a.wins, a.games),
         takePct: pct(a.takesMade, a.takes),
+        soloPct: pct(a.soloMade, a.soloTakes),
+        sharedPct: pct(a.sharedMade, a.sharedTakes),
+        sharedTakes: a.sharedTakes,
         coinchePct: pct(a.coinchesWon, a.coinches),
         defensePct: pct(a.defensesWon, a.defenses),
         avgPoints: mean(a.made),

@@ -74,3 +74,23 @@ test('évolution : la dernière photo = stats des parties terminées', async () 
     assert.equal(tl.series[id][1].takePct, S.get(id).takeMadePct);
   }
 });
+
+test('prise partagée : comptée pour les deux partenaires', () => {
+  const g = [{ id: 'g', teams: [['a', 'b'], ['c', 'd']], rules: { target: 2000 }, startedAt: 1 }];
+  const hs = [
+    // b dit 110 après a (prise partagée), réussie : 110 + 120 = 230
+    { gameId: 'g', idx: 0, taker: 'b', shared: true, bid: 110, suit: 'H', attackPoints: 118 },
+    // a seul, 80, chuté
+    { gameId: 'g', idx: 1, taker: 'a', bid: 80, suit: 'S', attackPoints: 60 },
+  ];
+  const S = computeStats(players, g, hs);
+  const a = S.get('a'), b = S.get('b');
+  assert.deepEqual([a.takes, a.takesMade, a.soloTakes, a.soloMade, a.sharedTakes, a.sharedMade], [2, 1, 1, 0, 1, 1]);
+  assert.deepEqual([b.takes, b.takesMade, b.soloTakes, b.sharedTakes], [1, 1, 0, 1]);
+  assert.equal(a.avgPointsMade, 230);
+  assert.equal(b.sharedPct, 100);
+  assert.equal(a.soloPct, 0);
+  assert.equal(S.get('c').takes, 0);
+  const gs = gameStats(g[0], hs);
+  assert.deepEqual([gs.a.takes, gs.a.made, gs.a.shared], [2, 1, 1]);
+});

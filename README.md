@@ -141,8 +141,9 @@ Chaque partie garde les règles en vigueur au moment de son lancement.
 | Statistique | Définition |
 |---|---|
 | Parties, victoires, % victoires / défaites | Parties terminées seulement |
-| Prises, réussies, % réussite / chute | Donnes où le joueur est preneur, parties en cours comprises |
-| Points moyens par contrat réussi | Moyenne des points marqués par l'équipe quand le contrat du joueur passe |
+| Prises, réussies, % réussite / chute | Contrats auxquels le joueur a participé : ses prises **solo** (il est le seul de son équipe à avoir annoncé) et les prises **partagées** (son partenaire avait aussi annoncé ; elles comptent pour les deux). Parties en cours comprises |
+| Prises solo / partagées | Les mêmes chiffres séparés selon le type de prise. Dans la saisie, la case « … avait aussi annoncé » rend la prise partagée |
+| Points moyens par contrat réussi | Moyenne des points marqués par l'équipe sur les contrats réussis auxquels le joueur a participé |
 | Annonce moyenne | Moyenne des annonces de 80 à 160 (capot et générale exclus) |
 | Contre réussi | Le joueur a contré et le contrat adverse a chuté |
 | Surcontre réussi | Le joueur a surcontré et son contrat est passé |

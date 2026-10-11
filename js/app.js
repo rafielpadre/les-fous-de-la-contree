@@ -333,7 +333,7 @@ function gamePage(id) {
     let what;
     if (ui.gameView === 'game') {
       const s = gs[pid];
-      what = `Prises ${s.made}/${s.takes}${s.made ? ` · ${num(s.points / s.made)} pts` : ''}<br>Contres ${s.coinchesWon}/${s.coinches} · Belotes ${s.belotes}`;
+      what = `Prises ${s.made}/${s.takes}${s.shared ? ` (${s.shared} part.)` : ''}${s.made ? ` · ${num(s.points / s.made)} pts` : ''}<br>Contres ${s.coinchesWon}/${s.coinches} · Belotes ${s.belotes}`;
     } else {
       const s = d.stats.get(pid);
       what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takeMadePct)} · Contres ${pct(s.coinchePct)}` : '';
@@ -349,7 +349,7 @@ function gamePage(id) {
     body += '<p class="muted">Aucune donne pour l\'instant. Touchez « Nouvelle donne » après chaque main.</p>';
   } else {
     body += '<ul class="hands panel" style="padding:0 12px">';
-    body += [...e.rows].reverse().map((row, k) => handRow(row, e.rows.length - k)).join('');
+    body += [...e.rows].reverse().map((row, k) => handRow(row, e.rows.length - k, g.teams)).join('');
     body += '</ul>';
   }
 
@@ -363,13 +363,14 @@ function gamePage(id) {
   return shell('Partie en cours', body, { back: '#/', fab, active: 'home' });
 }
 
-function handRow(row, n) {
+function handRow(row, n, teams) {
   const h = row.hand;
   if (h.passed) {
     return `<li><button class="hand" data-act="edit-hand" data-id="${h.id}"><span class="n">${n}</span>
       <span class="what"><b>Donne passée</b><div class="sub">Personne n'a pris</div></span><span class="pts muted">0</span></button></li>`;
   }
   const taker = P(h.taker);
+  const partnerId = h.shared ? teams[row.attack]?.find((x) => x !== h.taker) : null;
   const m = h.surcoincheBy ? '<span class="tag x2">surcontré ×4</span>' : h.coincheBy ? '<span class="tag x2">contré ×2</span>' : '';
   const res = row.made ? '<span class="tag ok">réussi</span>' : '<span class="tag ko">chuté</span>';
   const extra = [];
@@ -380,7 +381,7 @@ function handRow(row, n) {
   else if (!['capot', 'generale'].includes(h.bid) || h.attackPoints != null) extra.push(`${h.attackPoints ?? 0} pts faits`);
   return `<li><button class="hand" data-act="edit-hand" data-id="${h.id}">
     <span class="n">${n}</span>
-    <span class="what"><b>${esc(taker.name)}</b> · ${bidLabel(h.bid)} ${suitHtml(h.suit)} ${res}${m}
+    <span class="what"><b>${esc(taker.name)}</b>${partnerId ? ` <span class="muted">avec ${esc(P(partnerId).name)}</span>` : ''} · ${bidLabel(h.bid)} ${suitHtml(h.suit)} ${res}${m}
       <div class="sub">${extra.join(' · ')}</div></span>
     <span class="pts"><span class="p0">+${row.scores[0]}</span><br><span class="p1">+${row.scores[1]}</span></span>
   </button></li>`;
@@ -455,13 +456,15 @@ function playerPage(id) {
 
     <h2>Prises</h2>
     <div class="kpis">
-      <div class="kpi green"><div class="v">${s.takesMade}/${s.takes}</div><div class="l">prises réussies</div></div>
+      <div class="kpi green"><div class="v">${s.takesMade}/${s.takes}</div><div class="l">prises réussies (solo + partagées)</div></div>
       <div class="kpi green"><div class="v">${pct(s.takeMadePct)}</div><div class="l">de réussite</div></div>
       <div class="kpi red"><div class="v">${pct(s.takeFailPct)}</div><div class="l">de chutes</div></div>
     </div>
     <div class="panel" style="margin-top:10px">
       ${s.takes ? `<div class="meter" aria-hidden="true"><span style="width:${s.takeMadePct}%"></span></div>` : ''}
       <dl class="dl">
+        <dt>Prises solo réussies</dt><dd>${s.soloMade}/${s.soloTakes} (${pct(s.soloPct)})</dd>
+        <dt>Prises partagées réussies</dt><dd>${s.sharedMade}/${s.sharedTakes} (${pct(s.sharedPct)})</dd>
         <dt>Points moyens par contrat réussi</dt><dd>${num(s.avgPointsMade)}</dd>
         <dt>Annonce moyenne</dt><dd>${num(s.avgBid)}</dd>
         <dt>Couleur préférée</dt><dd>${fav}</dd>
@@ -717,7 +720,7 @@ const sheetHead = (title, right = '') => `<div class="sheet-head"><h2>${title}</
 // ---------- Saisie d'une donne
 function handDraftFrom(h) {
   return {
-    id: h?.id, taker: h?.taker ?? null, bid: h?.bid ?? null, suit: h?.suit ?? null,
+    id: h?.id, taker: h?.taker ?? null, shared: !!h?.shared, bid: h?.bid ?? null, suit: h?.suit ?? null,
     coincheBy: h?.coincheBy ?? null, surcoincheBy: h?.surcoincheBy ?? null,
     beloteBy: h?.beloteBy ?? null, capot: !!h?.capot,
     mode: 'attack', points: h?.attackPoints != null && !h?.capot ? String(h.attackPoints) : '',
@@ -728,7 +731,7 @@ function draftToHand(dr) {
   const pts = dr.points === '' ? null : Number(dr.points);
   const attackPoints = pts == null ? null : dr.mode === 'attack' ? pts : 162 - pts;
   return {
-    taker: dr.taker, bid: dr.bid, suit: dr.suit,
+    taker: dr.taker, shared: !!dr.shared, bid: dr.bid, suit: dr.suit,
     coincheBy: dr.coincheBy, surcoincheBy: dr.coincheBy ? dr.surcoincheBy : null,
     beloteBy: dr.suit === 'SA' ? null : dr.beloteBy,
     capot: dr.capot, attackPoints: dr.capot ? 162 : attackPoints,
@@ -765,7 +768,13 @@ function handSheet() {
   html += '<div class="sheet-body">';
 
   // Preneur
-  html += `<div class="field" style="margin-top:4px"><span class="lab">Preneur</span><div class="choices c4">${players.map((pid) => pbtn('taker', pid)).join('')}</div></div>`;
+  html += `<div class="field" style="margin-top:4px"><span class="lab">Preneur <span class="hint">(dernière annonce de l'équipe)</span></span><div class="choices c4">${players.map((pid) => pbtn('taker', pid)).join('')}</div>`;
+  if (att >= 0) {
+    const partner = teams[att].find((x) => x !== dr.taker);
+    html += `<label class="toggle"><input type="checkbox" data-draft="shared" ${dr.shared ? 'checked' : ''}>
+      <span>${esc(P(partner).name)} avait aussi annoncé<br><span class="small muted">Prise partagée : elle comptera pour les deux.</span></span></label>`;
+  }
+  html += '</div>';
 
   // Annonce
   html += `<div class="field"><span class="lab">Annonce</span><div class="choices c4">
@@ -1306,11 +1315,13 @@ document.addEventListener('keydown', (ev) => {
 function exportStats() {
   const d = D();
   const header = ['Joueur', 'Parties', 'Victoires', '% victoires', '% défaites', 'Prises', 'Prises réussies', '% réussite', '% chute',
+    'Prises solo', 'Prises solo réussies', 'Prises partagées', 'Prises partagées réussies',
     'Points moyens / contrat réussi', 'Annonce moyenne', 'Capots', 'Générales', 'Contres', 'Contres réussis', 'Surcontres', 'Surcontres réussis',
     'Belotes', '% chutes infligées en défense', 'Meilleur partenaire', 'Adversaire redouté'];
   const rows = d.players.map((p) => {
     const s = d.stats.get(p.id);
     return [p.name, s.games, s.wins, s.winPct, s.lossPct, s.takes, s.takesMade, s.takeMadePct, s.takeFailPct,
+      s.soloTakes, s.soloMade, s.sharedTakes, s.sharedMade,
       s.avgPointsMade, s.avgBid, s.capots, s.generales, s.coinches, s.coinchesWon, s.surcoinches, s.surcoinchesWon,
       s.belotes, s.defensePct, s.bestPartner ? P(s.bestPartner.id).name : '', s.nemesis ? P(s.nemesis.id).name : ''];
   });
@@ -1319,7 +1330,7 @@ function exportStats() {
 
 function exportHands() {
   const d = D();
-  const header = ['Partie', 'Date', 'Donne', 'Bleus', 'Rouges', 'Preneur', 'Annonce', 'Couleur', 'Contre', 'Surcontre',
+  const header = ['Partie', 'Date', 'Donne', 'Bleus', 'Rouges', 'Preneur', 'Prise partagée', 'Annonce', 'Couleur', 'Contre', 'Surcontre',
     'Points attaque', 'Capot', 'Belote', 'Résultat', 'Points Bleus', 'Points Rouges', 'Total Bleus', 'Total Rouges'];
   const rows = [];
   [...d.evaluated].reverse().forEach((e, gi) => {
@@ -1327,7 +1338,7 @@ function exportHands() {
       const h = r.hand;
       rows.push([gi + 1, dateTime(e.game.startedAt), i + 1,
         e.game.teams[0].map((x) => P(x).name).join(' & '), e.game.teams[1].map((x) => P(x).name).join(' & '),
-        h.passed ? '' : P(h.taker).name, h.passed ? 'passe' : bidLabel(h.bid), h.passed ? '' : SUITS[h.suit]?.label,
+        h.passed ? '' : P(h.taker).name, h.shared ? 'oui' : '', h.passed ? 'passe' : bidLabel(h.bid), h.passed ? '' : SUITS[h.suit]?.label,
         h.coincheBy ? P(h.coincheBy).name : '', h.surcoincheBy ? P(h.surcoincheBy).name : '',
         h.attackPoints, h.capot ? 'oui' : '', h.beloteBy ? P(h.beloteBy).name : '',
         h.passed ? '' : r.made ? 'réussi' : 'chuté', r.scores[0], r.scores[1], r.totals[0], r.totals[1]]);

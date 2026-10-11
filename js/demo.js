@@ -38,7 +38,7 @@ export function buildDemo(uuid) {
       const belote = suit !== 'SA' && rnd() < 0.35 ? pick(all) : null;
       const coinche = rnd() < 0.12 ? pick(teams[1 - ti]) : null;
       const h = {
-        gameId: gid, idx: hi, taker, bid, suit, attackPoints: Math.max(0, pts), capot,
+        gameId: gid, idx: hi, taker, shared: bid >= 100 && rnd() < 0.3, bid, suit, attackPoints: Math.max(0, pts), capot,
         beloteBy: belote, coincheBy: coinche,
         surcoincheBy: coinche && rnd() < 0.2 ? pick(teams[ti]) : null,
         createdAt: t + hi * 4 * 60000,
