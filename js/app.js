@@ -16,6 +16,8 @@ import {
 } from './tarot.js';
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
+// Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
+const APP_VERSION = '6 — contrée + tarot';
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -746,6 +748,7 @@ function settingsPage() {
       <button class="btn light block" data-act="export-thands">Donnes tarot</button></div>`}
 
     <h2>Ce téléphone</h2>
+    <p class="small muted" style="margin:-4px 0 10px">Version de l'application : <b>${APP_VERSION}</b></p>
     <button class="btn danger block" data-act="leave-group">${local ? 'Effacer les données locales' : 'Quitter le groupe sur ce téléphone'}</button>
     <p class="small muted" style="margin-top:8px">${local ? 'Toutes les parties et profils de ce téléphone seront supprimés.' : 'Les données restent sur le serveur : vous pourrez revenir avec le code.'}</p>`;
   return shell('Groupe', body, { active: 'settings' });
@@ -2115,5 +2118,15 @@ store.startPolling();
 store.sync();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.CONTREE_NO_SW) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // updateViaCache 'none' : le téléphone vérifie toujours si sw.js a changé
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => reg.update())
+    .catch(() => {});
+  // Quand une nouvelle version prend le relais, on recharge une fois pour l'afficher
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded || !navigator.serviceWorker.controller) return;
+    reloaded = true;
+    location.reload();
+  });
 }

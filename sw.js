@@ -1,6 +1,6 @@
 // Service worker : permet d'ouvrir l'app sans réseau.
 // Pensez à changer VERSION à chaque mise à jour des fichiers.
-const VERSION = 'fdc-v5';
+const VERSION = 'fdc-v6';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/store.js', 'js/scoring.js', 'js/stats.js',
@@ -30,7 +30,9 @@ self.addEventListener('fetch', (e) => {
   // Fichiers de l'app : réseau d'abord (pour avoir les mises à jour), cache si hors ligne
   if (url.origin === location.origin) {
     e.respondWith(
-      fetch(req)
+      // no-cache : on redemande toujours au serveur s'il y a plus récent (sinon le
+      // navigateur peut garder l'ancienne version jusqu'à 10 min sur GitHub Pages)
+      fetch(req, { cache: 'no-cache' })
         .then((r) => {
           const copy = r.clone();
           caches.open(VERSION).then((c) => c.put(req, copy));
