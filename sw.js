@@ -1,6 +1,6 @@
 // Service worker : permet d'ouvrir l'app sans réseau.
 // Pensez à changer VERSION à chaque mise à jour des fichiers.
-const VERSION = 'fdc-v3';
+const VERSION = 'fdc-v4';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/store.js', 'js/scoring.js', 'js/stats.js',
