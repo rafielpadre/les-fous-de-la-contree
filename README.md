@@ -154,6 +154,20 @@ Chaque partie garde les règles en vigueur au moment de son lancement.
 
 Exports CSV (ouvrables dans Excel) : **Groupe → Exporter**.
 
+## Plusieurs groupes et « Toutes ses stats »
+
+Un même téléphone peut suivre **plusieurs groupes**, par exemple un groupe avec certains amis et un autre avec d'autres. Pour passer de l'un à l'autre, touchez le nom du groupe en haut de l'onglet Parties. Le menu qui s'ouvre permet aussi d'**en rejoindre un autre** (avec son code) ou d'en **créer un nouveau**. On le retrouve dans **Groupe → Mes groupes**.
+
+Chaque groupe garde ses propres profils, parties, classements et graphiques. Rien ne change pour jouer : un profil reste une simple fiche que n'importe qui peut créer en quelques secondes.
+
+**Relier des fiches (facultatif).** Dans le profil d'un joueur, touchez **Relier à un autre groupe**, puis sa fiche dans chacun de vos autres groupes. N'importe qui ayant accès aux deux groupes peut le faire ; l'intéressé n'a pas besoin d'être là. Ensuite :
+- sa **photo** est la même partout (la changer dans un groupe la change dans les autres) ;
+- le bouton **Toutes ses stats** affiche ses statistiques additionnées sur tous les groupes reliés, contrée et tarot, avec les courbes d'évolution. Exemple : 4 victoires sur 9 parties dans un groupe et 2 sur 5 dans l'autre donnent 6 sur 14, soit 43 %.
+
+Le total d'une personne n'est calculé que sur un téléphone qui suit **tous** les groupes concernés. Chaque groupe reste privé et protégé par son code.
+
+Pour retirer un lien, rouvrez **Liens** et touchez la fiche marquée ✓.
+
 ## Tarot
 
 Le sélecteur **Contrée | Tarot**, en haut des onglets Parties, Joueurs, Graphiques et Historique et dans les profils, choisit le jeu affiché. Les profils des joueurs sont communs aux deux jeux, mais leurs statistiques sont séparées.

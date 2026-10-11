@@ -9,7 +9,7 @@ import { computeStats, computeDuos, gameStats, handsByGame, timeline, TIMELINE_S
 import { lineChart, multiLineChart, bindMultiLine } from './charts.js';
 import { fileToAvatar } from './photo.js';
 import { toCsv, download } from './csv.js';
-import { buildDemo } from './demo.js';
+import { buildDemoGroups } from './demo.js';
 import {
   CONTRACTS, CONTRACT_KEYS, OBJECTIVES, POIGNEES, POIGNEE_TRUMPS, CHELEMS, DEFAULT_TAROT_RULES,
   tarotHand, tarotTotals, explainTarot,
@@ -17,7 +17,7 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_VERSION = '6 — contrée + tarot';
+const APP_VERSION = '7 — contrée + tarot + multi-groupes';
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -58,9 +58,20 @@ let cache = null;
 
 function D() {
   if (cache && cache.v === version) return cache;
-  const players = store.list('player').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const allGames = store.list('game');
-  const allHands = store.list('hand');
+  const group = store.getState().group;
+  const settings = group ? store.get(group.id) : null;
+  cache = {
+    v: version,
+    ...buildData(store.list('player'), store.list('game'), store.list('hand')),
+    rules: { ...DEFAULT_RULES, ...(settings?.rules || {}) },
+    trules: { ...DEFAULT_TAROT_RULES, ...(settings?.tarot || {}) },
+  };
+  return cache;
+}
+
+/** Toutes les statistiques à partir de listes de joueurs / parties / donnes. */
+function buildData(playersIn, allGames, allHands) {
+  const players = [...playersIn].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   // Contrée (parties sans type, historiques) et tarot (type 'tarot') sont séparés
   const games = allGames.filter((g) => (g.type || 'contree') === 'contree');
   const tgames = allGames.filter((g) => g.type === 'tarot');
@@ -70,25 +81,67 @@ function D() {
   const thands = allHands.filter((h) => tarotIds.has(h.gameId));
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
   const byGame = handsByGame(allHands);
-  const stats = computeStats(players, games, hands);
-  const group = store.getState().group;
-  const settings = group ? store.get(group.id) : null;
-  const rules = { ...DEFAULT_RULES, ...(settings?.rules || {}) };
-  const trules = { ...DEFAULT_TAROT_RULES, ...(settings?.tarot || {}) };
   const evaluated = games.map((g) => {
     const hs = byGame.get(g.id) || [];
-    const res = gameTotals(hs, g.teams, g.rules);
-    return { game: g, hands: hs, ...res };
+    return { game: g, hands: hs, ...gameTotals(hs, g.teams, g.rules) };
   }).sort((a, b) => (b.game.startedAt ?? 0) - (a.game.startedAt ?? 0));
   const tevaluated = evaluateTarot(tgames, thands).sort((a, b) => (b.game.startedAt ?? 0) - (a.game.startedAt ?? 0));
-  cache = {
-    v: version, players, games, hands, byId, byGame, stats, rules, evaluated, timeline: timeline(players, games, hands),
-    tgames, thands, trules, tevaluated, tstats: computeTarotStats(players, tgames, thands),
-    ttimeline: tarotTimeline(players, tgames, thands),
+  return {
+    players, games, hands, byId, byGame, evaluated,
+    stats: computeStats(players, games, hands), timeline: timeline(players, games, hands),
+    tgames, thands, tevaluated,
+    tstats: computeTarotStats(players, tgames, thands), ttimeline: tarotTimeline(players, tgames, thands),
   };
-  return cache;
 }
-const P = (id) => D().byId[id] || { id, name: 'Joueur supprimé' };
+
+// ------------------------------------------------------------ données tous groupes
+// Les fiches reliées (même personId) de tous les groupes du téléphone ne forment
+// qu'une seule personne : on renomme leurs identifiants puis on recalcule tout.
+let crossCache = null;
+function cross() {
+  if (crossCache && crossCache.v === version) return crossCache;
+  const groups = store.listGroups();
+  const people = {};
+  const games = [];
+  const hands = [];
+  for (const g of groups) {
+    const map = {};
+    for (const p of store.listIn(g.id, 'player')) {
+      const cid = p.personId || `${g.id}:${p.id}`;
+      map[p.id] = cid;
+      if (!people[cid]) people[cid] = { id: cid, name: p.name, photo: p.photo || null, personId: p.personId || null, groups: [] };
+      people[cid].groups.push({ id: g.id, name: g.name, pid: p.id });
+      if (!people[cid].photo && p.photo) people[cid].photo = p.photo;
+    }
+    const R = (pid) => (pid ? map[pid] || `${g.id}:${pid}` : pid);
+    for (const gm of store.listIn(g.id, 'game')) {
+      games.push(gm.type === 'tarot'
+        ? { ...gm, players: gm.players.map(R) }
+        : { ...gm, teams: gm.teams.map((t) => t.map(R)) });
+    }
+    for (const h of store.listIn(g.id, 'hand')) {
+      hands.push({
+        ...h,
+        taker: R(h.taker), called: R(h.called), coincheBy: R(h.coincheBy), surcoincheBy: R(h.surcoincheBy),
+        beloteBy: R(h.beloteBy), pabBy: R(h.pabBy),
+        poignees: (h.poignees || []).map((x) => ({ ...x, by: R(x.by) })),
+        miseres: (h.miseres || []).map(R),
+      });
+    }
+  }
+  crossCache = { v: version, ...buildData(Object.values(people), games, hands), people };
+  return crossCache;
+}
+
+/** Fiches reliées à une personne, tous groupes du téléphone : [{ id, name, pid }] */
+function linkedProfiles(personId) {
+  if (!personId) return [];
+  return cross().people[personId]?.groups || [];
+}
+
+// Pendant l'affichage d'un profil « tous groupes », P() cherche d'abord ici
+let pMap = null;
+const P = (id) => (pMap && pMap[id]) || D().byId[id] || { id, name: 'Joueur supprimé' };
 const teamNames = (team) => team.map((id) => esc(P(id).name)).join(' & ');
 
 // ------------------------------------------------------------ état d'interface
@@ -102,6 +155,9 @@ const ui = {
   chartSel: null,       // [{ id, slot }] joueurs choisis, slot = couleur attribuée
   chartModel: null,
   tchartStat: 'winPct', // statistique affichée dans Graphiques (tarot)
+  pchartC: 'winPct',    // statistique du graphique d'un profil (contrée)
+  pchartT: 'winPct',    // … (tarot)
+  bindQueue: [],        // graphiques à rendre interactifs après l'affichage
   kind: loadKind(),     // jeu affiché : 'contree' | 'tarot'
 };
 
@@ -159,8 +215,10 @@ function render() {
     return;
   }
   const r = route();
+  ui.bindQueue = [];
   let page;
   switch (r.name) {
+    case 'person': page = personPage(r.id); break;
     case 'game': page = store.get(r.id)?.type === 'tarot' ? tarotGamePage(r.id) : gamePage(r.id); break;
     case 'players': page = ui.kind === 'tarot' ? tarotPlayersPage() : playersPage(); break;
     case 'player': page = ui.kind === 'tarot' ? tarotPlayerPage(r.id) : playerPage(r.id); break;
@@ -171,6 +229,10 @@ function render() {
   }
   app.innerHTML = page;
   if (r.name === 'charts' && ui.chartModel) bindMultiLine(document.querySelector('.chart-card'), ui.chartModel);
+  for (const [sel, model] of ui.bindQueue) {
+    const el = document.querySelector(sel);
+    if (el) bindMultiLine(el, model);
+  }
   store.setPolling(r.name === 'game');
 }
 
@@ -184,7 +246,11 @@ function syncBadge() {
   return '<button class="sync" data-act="sync-now"><i></i>À jour</button>';
 }
 
-function shell(title, body, { back = null, fab = '', active = '' } = {}) {
+function shell(title, body, { back = null, fab = '', active = '', groupSwitch = false } = {}) {
+  if (groupSwitch) {
+    const n = store.listGroups().length;
+    title = `<button class="gswitch" data-act="groups" aria-label="Changer de groupe">${title}<span class="chev">${n > 1 ? `▾ ${n}` : '▾'}</span></button>`;
+  }
   const tab = (href, ic, label, key) =>
     `<a href="${href}" ${active === key ? 'aria-current="page"' : ''}><span class="ic">${ic}</span>${label}</a>`;
   return `
@@ -255,7 +321,7 @@ function homePage() {
         <p class="muted">Il faut au moins 4 joueurs pour lancer une partie. Chaque profil garde ses statistiques sur la durée.</p>
         <button class="btn block" data-act="add-player">Ajouter un joueur</button>
       </div>`;
-    return shell(esc(store.getState().group.name), body, { active: 'home' });
+    return shell(esc(store.getState().group.name), body, { active: 'home', groupSwitch: true });
   }
 
   if (running.length) {
@@ -289,7 +355,7 @@ function homePage() {
   const fab = d.players.length >= 4
     ? '<button class="btn gold block" data-act="new-game">Nouvelle partie</button>'
     : '<button class="btn block" data-act="add-player">Ajouter un joueur</button>';
-  return shell(esc(store.getState().group.name), body, { fab, active: 'home' });
+  return shell(esc(store.getState().group.name), body, { fab, active: 'home', groupSwitch: true });
 }
 
 function rankPlayers() {
@@ -463,8 +529,8 @@ function playersPage() {
   return shell('Joueurs', body, { fab, active: 'players' });
 }
 
-function playerPage(id) {
-  const d = D();
+function playerPage(id, opts = {}) {
+  const d = opts.ctx || D();
   const p = d.byId[id];
   if (!p) return shell('Joueur', '<p class="muted">Ce joueur n\'existe plus.</p>', { back: '#/players' });
   const s = d.stats.get(id);
@@ -476,7 +542,7 @@ function playerPage(id) {
       ${avatar(p, 'l')}
       <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
         <p>${s.games} partie${s.games > 1 ? 's' : ''} · ${s.handsPlayed} donnes jouées</p>
-        <button class="btn light" style="margin-top:10px;min-height:38px;padding:8px 14px" data-act="edit-player" data-id="${p.id}">Modifier le profil</button>
+        ${profileActions(p, opts)}
       </div>
     </div>
     <div style="margin-top:14px">${kindSwitch()}</div>
@@ -536,12 +602,7 @@ function playerPage(id) {
   }
 
   // Évolution
-  body += '<h2>Évolution</h2><div class="panel">';
-  body += lineChart([
-    { name: '% de victoires', color: '#3a50c2', values: s.timeline.map((t) => t.winPct) },
-    { name: '% de prises réussies', color: '#12936a', values: s.timeline.map((t) => t.takePct) },
-  ], { labels: s.timeline.map((_, i) => i + 1) });
-  body += '<p class="small muted" style="margin:6px 0 0">Valeurs cumulées après chaque partie terminée.</p></div>';
+  body += profileChart(id, d, false, opts);
 
   // Historique
   const mine = d.evaluated.filter((e) => e.winner !== null && (e.game.teams[0].includes(id) || e.game.teams[1].includes(id))).slice(0, 10);
@@ -551,14 +612,165 @@ function playerPage(id) {
       const ti = teamOf(e.game.teams, id);
       const won = e.winner === ti;
       const partner = e.game.teams[ti].find((x) => x !== id);
-      return `<li><a class="item" href="#/game/${e.game.id}" style="text-decoration:none;color:inherit">
+      return `<li><a class="item" ${opts.cross ? '' : `href="#/game/${e.game.id}"`} style="text-decoration:none;color:inherit">
         <span class="tag ${won ? 'ok' : 'ko'}" style="margin:0">${won ? 'Gagnée' : 'Perdue'}</span>
         <span class="main"><span class="t">avec ${esc(P(partner).name)}</span><br><span class="s">contre ${teamNames(e.game.teams[1 - ti])} · ${date(e.game.finishedAt)}</span></span>
         <span class="r" style="font-size:17px">${e.totals[ti]}<small>à ${e.totals[1 - ti]}</small></span></a></li>`;
     }).join('');
     body += '</ul>';
   }
-  return shell('Profil', body, { back: '#/players', active: 'players' });
+  return shell(opts.cross ? 'Tous groupes' : 'Profil', body, { back: opts.back || '#/players', active: 'players' });
+}
+
+// ============================================================ PROFILS RELIÉS (tous groupes)
+/** Boutons sous le nom dans un profil. */
+function profileActions(p, opts) {
+  const btn = 'class="btn light" style="margin-top:10px;min-height:38px;padding:8px 14px"';
+  if (opts.cross) {
+    const groups = opts.groups || [];
+    return `<p class="small" style="margin-top:6px">${groups.length} groupe${groups.length > 1 ? 's' : ''} : ${groups.map((g) => esc(g.name)).join(', ')}</p>`;
+  }
+  let html = `<button ${btn} data-act="edit-player" data-id="${p.id}">Modifier</button>`;
+  const linked = linkedProfiles(p.personId);
+  if (store.listGroups().length > 1) {
+    html += ` <button ${btn} data-act="link-open" data-id="${p.id}">${linked.length > 1 ? 'Liens' : 'Relier à un autre groupe'}</button>`;
+  }
+  if (linked.length > 1) {
+    html += `<button class="btn gold" style="margin-top:10px;min-height:38px;padding:8px 14px;width:100%" data-act="person" data-id="${p.personId}">Toutes ses stats · ${linked.length} groupes</button>`;
+  }
+  return `<div class="row wrap" style="gap:8px">${html}</div>`;
+}
+
+/** Graphique d'évolution d'un joueur, statistique au choix. */
+function profileChart(id, d, tarot, opts = {}) {
+  const STATS = tarot ? TAROT_TIMELINE_STATS : TIMELINE_STATS;
+  const key = tarot ? ui.pchartT : ui.pchartC;
+  const stat = STATS.find((x) => x.key === key) || STATS[0];
+  const tl = tarot ? d.ttimeline : d.timeline;
+  // Seulement les parties de ce joueur, dans l'ordre chronologique
+  const idx = tl.points.map((pt, i) => (pt.players.includes(id) ? i : -1)).filter((i) => i >= 0);
+  const pctStat = stat.unit === '%';
+  const fmt = pctStat ? (v) => `${Math.round(v)} %` : stat.unit === 'rang' || stat.key === 'avgBouts' ? (v) => num(v, 1) : (v) => num(v);
+  const model = {
+    title: stat.label,
+    series: [{ id, name: P(id).name, color: SERIES_COLORS[0], values: idx.map((i) => tl.series[id]?.[i]?.[stat.key] ?? null), played: idx.map(() => true) }],
+    heads: idx.map((i, k) => `Sa partie ${k + 1} · ${date(tl.points[i].t)}`),
+    ticks: idx.map((_, k) => String(k + 1)),
+    pct: pctStat, zeroBase: stat.unit === '', invert: stat.key === 'avgRank', fmt,
+  };
+  ui.bindQueue.push(['.pchart-card', model]);
+  return `<h2>Évolution</h2><div class="panel pchart-card">
+    <div class="field" style="margin-top:0"><label for="pchart-stat">Statistique</label>
+      <select class="input" id="pchart-stat" data-pchart>
+        ${STATS.map((x) => `<option value="${x.key}" ${x.key === stat.key ? 'selected' : ''}>${x.label}</option>`).join('')}
+      </select></div>
+    ${multiLineChart(model)}
+    <p class="small muted" style="margin:6px 0 0">Valeur cumulée après chacune de ses parties terminées${opts.cross ? ', tous groupes confondus' : ''}. Touchez la courbe pour lire les valeurs.</p>
+  </div>`;
+}
+
+/** Profil « tous groupes » d'une personne (fiches reliées). */
+function personPage(personId) {
+  const c = cross();
+  const person = c.people[personId];
+  if (!person) return shell('Toutes ses stats', '<p class="muted">Ce profil n\'est relié à aucun autre groupe.</p>', { back: '#/players' });
+  pMap = c.byId;
+  try {
+    const here = person.groups.find((g) => g.id === store.getState().group?.id);
+    const opts = { ctx: c, cross: true, groups: person.groups, back: here ? `#/player/${here.pid}` : '#/players' };
+    return ui.kind === 'tarot' ? tarotPlayerPage(personId, opts) : playerPage(personId, opts);
+  } finally {
+    pMap = null;
+  }
+}
+
+// ---------- Feuille : relier une fiche à d'autres groupes
+function linkSheet() {
+  const { pid } = ui.sheet.draft;
+  const me = store.get(pid);
+  const others = store.listGroups().filter((g) => g.id !== store.getState().group.id);
+  let html = `${sheetHead(`Relier ${esc(me?.name || '')}`)}<div class="sheet-body">
+    <p class="small muted" style="margin:0 0 6px">Touchez la fiche de ${esc(me?.name || '')} dans chacun de vos autres groupes.
+    Ses statistiques seront additionnées dans « Toutes ses stats », et sa photo sera la même partout.</p>`;
+  for (const g of others) {
+    const players = store.listIn(g.id, 'player').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    html += `<div class="field"><span class="lab">${esc(g.name)}</span>`;
+    if (!players.length) html += '<p class="small muted">Aucun joueur dans ce groupe.</p>';
+    else {
+      html += '<div class="pick">';
+      html += players.map((q) => {
+        const on = !!me?.personId && q.personId === me.personId;
+        return `<button data-act="${on ? 'unlink' : 'link-to'}" data-g="${g.id}" data-v="${q.id}" aria-pressed="${on}">
+          ${avatar(q, 's')}${esc(q.name)}${on ? ' ✓' : ''}</button>`;
+      }).join('');
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  html += `<p class="small muted" style="margin-top:16px">Touchez une fiche reliée (✓) pour retirer le lien.</p></div>
+    <div class="sheet-foot"><button class="btn gold block" data-act="sheet-close">Terminé</button></div>`;
+  return html;
+}
+
+/** Relie la fiche pid (groupe affiché) à la fiche otherPid du groupe gid. */
+function linkProfiles(pid, gid, otherPid) {
+  const me = store.get(pid);
+  const other = store.listIn(gid, 'player').find((q) => q.id === otherPid);
+  if (!me || !other) return;
+  const personId = me.personId || other.personId || store.uuid();
+  // Une seule fiche par groupe pour une même personne
+  for (const q of store.listIn(gid, 'player')) {
+    if (q.personId === personId && q.id !== otherPid) store.patchIn(gid, q.id, { personId: null });
+  }
+  // Si l'autre fiche était déjà reliée à d'autres, on fusionne les deux personnes
+  if (other.personId && other.personId !== personId) {
+    for (const g of store.listGroups()) {
+      for (const q of store.listIn(g.id, 'player')) {
+        if (q.personId === other.personId) {
+          if (g.id === store.getState().group.id) store.patch(q.id, { personId });
+          else store.patchIn(g.id, q.id, { personId });
+        }
+      }
+    }
+  }
+  const photo = me.photo || other.photo || null;
+  if (me.personId !== personId || (!me.photo && photo)) store.patch(pid, { personId, photo });
+  store.patchIn(gid, otherPid, { personId, photo });
+}
+
+/** Recopie la photo d'une fiche dans toutes les fiches reliées des autres groupes. */
+function propagatePhoto(pid) {
+  const me = store.get(pid);
+  if (!me?.personId) return;
+  const here = store.getState().group.id;
+  for (const g of store.listGroups()) {
+    if (g.id === here) continue;
+    for (const q of store.listIn(g.id, 'player')) {
+      if (q.personId === me.personId && (q.photo || null) !== (me.photo || null)) store.patchIn(g.id, q.id, { photo: me.photo || null });
+    }
+  }
+}
+
+// ---------- Feuille : mes groupes
+function groupsSheet() {
+  const groups = store.listGroups();
+  const active = store.getState().group?.id;
+  const cloud = store.cloudConfigured;
+  return `${sheetHead('Mes groupes')}<div class="sheet-body">
+    <ul class="list" style="margin-top:4px">
+      ${groups.map((g) => `<li><button class="item" data-act="switch-group" data-id="${g.id}">
+        <span class="gdot ${g.id === active ? 'on' : ''}"></span>
+        <span class="main"><span class="t">${esc(g.name)}</span><br><span class="s">${g.local ? 'Sur ce téléphone uniquement' : `Code ${esc(g.code)}`}</span></span>
+        ${g.id === active ? '<span class="tag ok" style="margin:0">affiché</span>' : ''}</button></li>`).join('')}
+    </ul>
+    ${cloud ? `<div class="field"><label for="add-code">Rejoindre un autre groupe</label>
+      <input class="input" id="add-code" placeholder="Code à 8 caractères" autocomplete="off" autocapitalize="characters" maxlength="12"
+        style="text-transform:uppercase;letter-spacing:.12em;font-weight:700">
+      <button class="btn block" style="margin-top:8px" data-act="add-join">Rejoindre</button></div>` : ''}
+    <div class="field"><label for="add-name">Créer un nouveau groupe</label>
+      <input class="input" id="add-name" placeholder="Nom du groupe" maxlength="60">
+      <button class="btn gold block" style="margin-top:8px" data-act="add-create">Créer le groupe</button></div>
+  </div>`;
 }
 
 // ============================================================ GRAPHIQUES
@@ -748,8 +960,9 @@ function settingsPage() {
       <button class="btn light block" data-act="export-thands">Donnes tarot</button></div>`}
 
     <h2>Ce téléphone</h2>
+    <button class="btn light block" style="margin-bottom:10px" data-act="groups">Mes groupes (${store.listGroups().length}) · en ajouter un</button>
     <p class="small muted" style="margin:-4px 0 10px">Version de l'application : <b>${APP_VERSION}</b></p>
-    <button class="btn danger block" data-act="leave-group">${local ? 'Effacer les données locales' : 'Quitter le groupe sur ce téléphone'}</button>
+    <button class="btn danger block" data-act="leave-group">${local ? 'Effacer ce groupe de ce téléphone' : 'Quitter ce groupe sur ce téléphone'}</button>
     <p class="small muted" style="margin-top:8px">${local ? 'Toutes les parties et profils de ce téléphone seront supprimés.' : 'Les données restent sur le serveur : vous pourrez revenir avec le code.'}</p>`;
   return shell('Groupe', body, { active: 'settings' });
 }
@@ -785,7 +998,8 @@ function renderSheet(opening = false) {
   const prevScroll = sheetRoot.querySelector('.sheet-body')?.scrollTop ?? 0;
   const { kind } = ui.sheet;
   const html = kind === 'hand' ? handSheet() : kind === 'newGame' ? newGameSheet() : kind === 'player' ? playerSheet()
-    : kind === 'thand' ? tarotHandSheet() : kind === 'tnewGame' ? tarotNewGameSheet() : '';
+    : kind === 'thand' ? tarotHandSheet() : kind === 'tnewGame' ? tarotNewGameSheet()
+    : kind === 'link' ? linkSheet() : kind === 'groups' ? groupsSheet() : '';
   sheetRoot.innerHTML = `<div class="scrim ${opening ? 'in' : ''}" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
   document.body.style.overflow = 'hidden';
   const body = sheetRoot.querySelector('.sheet-body');
@@ -1137,7 +1351,7 @@ function tarotHomePage() {
   const fab = d.players.length >= 3
     ? '<button class="btn gold block" data-act="new-tgame">Nouvelle partie de tarot</button>'
     : '<button class="btn block" data-act="add-player">Ajouter un joueur</button>';
-  return shell(esc(store.getState().group.name), body, { fab, active: 'home' });
+  return shell(esc(store.getState().group.name), body, { fab, active: 'home', groupSwitch: true });
 }
 
 function tarotProgress(e) {
@@ -1536,8 +1750,8 @@ function tarotPlayersPage() {
   return shell('Joueurs', body, { fab: '<button class="btn block" data-act="add-player">Ajouter un joueur</button>', active: 'players' });
 }
 
-function tarotPlayerPage(id) {
-  const d = D();
+function tarotPlayerPage(id, opts = {}) {
+  const d = opts.ctx || D();
   const p = d.byId[id];
   if (!p) return shell('Joueur', '<p class="muted">Ce joueur n\'existe plus.</p>', { back: '#/players' });
   const s = d.tstats.get(id);
@@ -1546,7 +1760,7 @@ function tarotPlayerPage(id) {
       ${avatar(p, 'l')}
       <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
         <p>${s.games} partie${s.games > 1 ? 's' : ''} de tarot · ${s.handsPlayed} donnes jouées</p>
-        <button class="btn light" style="margin-top:10px;min-height:38px;padding:8px 14px" data-act="edit-player" data-id="${p.id}">Modifier le profil</button>
+        ${profileActions(p, opts)}
       </div>
     </div>
     <div style="margin-top:14px">${kindSwitch()}</div>
@@ -1605,23 +1819,18 @@ function tarotPlayerPage(id) {
       <dt>Misères annoncées</dt><dd>${s.miseres}</dd>
     </dl></div>`;
 
-  body += '<h2>Évolution</h2><div class="panel">';
-  body += lineChart([
-    { name: '% de victoires', color: '#3a50c2', values: s.timeline.map((t) => t.winPct) },
-    { name: '% de prises réussies', color: '#12936a', values: s.timeline.map((t) => t.takePct) },
-  ], { labels: s.timeline.map((_, i) => i + 1) });
-  body += '<p class="small muted" style="margin:6px 0 0">Valeurs cumulées après chaque partie terminée.</p></div>';
+  body += profileChart(id, d, true, opts);
 
   const mine = d.tevaluated.filter((e) => e.finished && e.game.players.includes(id)).slice(0, 10);
   if (mine.length) {
     body += '<h2>Dernières parties</h2><ul class="list">';
-    body += mine.map((e) => `<li><a class="item" href="#/game/${e.game.id}" style="text-decoration:none;color:inherit">
+    body += mine.map((e) => `<li><a class="item" ${opts.cross ? '' : `href="#/game/${e.game.id}"`} style="text-decoration:none;color:inherit">
         <span class="tag ${e.rank[id] === 1 ? 'ok' : e.rank[id] <= 3 ? 'x2' : 'ko'}" style="margin:0">${RANK_LABEL(e.rank[id])}</span>
         <span class="main"><span class="t">Tarot à ${e.game.players.length}</span><br><span class="s">${date(e.game.finishedAt)}</span></span>
         <span class="r" style="font-size:17px">${e.totals[id]}</span></a></li>`).join('');
     body += '</ul>';
   }
-  return shell('Profil', body, { back: '#/players', active: 'players' });
+  return shell(opts.cross ? 'Tous groupes' : 'Profil', body, { back: opts.back || '#/players', active: 'players' });
 }
 
 // ---------- Actions tarot
@@ -1721,15 +1930,16 @@ async function handle(act, el, id) {
       return;
     }
     case 'demo': {
-      store.replaceAll(buildDemo(store.uuid));
+      store.addGroups(buildDemoGroups(store.uuid));
       go('#/');
       return render();
     }
     case 'leave-group': {
       const local = store.getState().group?.local || !store.cloudConfigured;
+      const gname = store.getState().group?.name;
       const msg = local
-        ? 'Effacer toutes les données de ce téléphone ? Cette action est définitive.'
-        : `Quitter le groupe sur ce téléphone ?${store.getState().dirty.length ? ' Attention : des modifications n\'ont pas encore été envoyées.' : ''}`;
+        ? `Effacer le groupe « ${gname} » de ce téléphone ? Cette action est définitive.`
+        : `Quitter « ${gname} » sur ce téléphone ?${store.getState().dirty.length ? ' Attention : des modifications n\'ont pas encore été envoyées.' : ''}`;
       if (!(await ask({ title: msg, ok: local ? 'Effacer' : 'Quitter', danger: true }))) return;
       store.leaveGroup();
       go('');
@@ -1834,6 +2044,47 @@ async function handle(act, el, id) {
     }
     case 'game-view': ui.gameView = el.dataset.v; return render();
     case 'kind': setKind(el.dataset.v); ui.chartSel = null; return render();
+    case 'person': return go(`#/person/${id}`);
+    case 'link-open': return openSheet('link', { pid: id });
+    case 'link-to':
+      linkProfiles(sh.draft.pid, el.dataset.g, el.dataset.v);
+      toast('Profils reliés');
+      return renderSheet();
+    case 'unlink':
+      store.patchIn(el.dataset.g, el.dataset.v, { personId: null });
+      toast('Lien retiré');
+      return renderSheet();
+    case 'groups': return openSheet('groups', {});
+    case 'switch-group':
+      closeSheet();
+      ui.chartSel = null;
+      store.switchGroup(id);
+      return go('#/');
+    case 'add-join': {
+      const code = document.getElementById('add-code').value.trim();
+      if (code.length < 6) return toast('Le code fait 8 caractères');
+      el.disabled = true;
+      try {
+        await store.joinGroup(code);
+        closeSheet();
+        ui.chartSel = null;
+        go('#/');
+        return toast(`Bienvenue dans « ${store.getState().group.name} »`);
+      } catch (e) {
+        el.disabled = false;
+        return toast(/inconnu/i.test(e.message) ? 'Code inconnu, vérifiez-le' : `Connexion impossible : ${e.message}`);
+      }
+    }
+    case 'add-create': {
+      const name = document.getElementById('add-name').value.trim();
+      if (!name) return toast('Donnez un nom au groupe');
+      el.disabled = true;
+      await store.createGroup(name);
+      closeSheet();
+      ui.chartSel = null;
+      go('#/');
+      return toast(`Groupe « ${name} » créé`);
+    }
     case 'chart-stat': ui.chartStat = el.dataset.v; return render();
     case 'chart-player': {
       const pid = el.dataset.v;
@@ -1895,8 +2146,10 @@ async function handle(act, el, id) {
       if (!name) return;
       const exists = D().players.some((p) => p.id !== dr.id && p.name.toLowerCase() === name.toLowerCase());
       if (exists) return toast('Un joueur porte déjà ce nom');
-      if (dr.id) store.patch(dr.id, { name, photo: dr.photo || null });
-      else store.put('player', { name, photo: dr.photo || null, createdAt: Date.now() });
+      if (dr.id) {
+        store.patch(dr.id, { name, photo: dr.photo || null });
+        propagatePhoto(dr.id);
+      } else store.put('player', { name, photo: dr.photo || null, createdAt: Date.now() });
       closeSheet();
       return toast(dr.id ? 'Profil mis à jour' : `${name} a rejoint le groupe`);
     }
@@ -1963,6 +2216,10 @@ document.addEventListener('input', (ev) => {
 
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
+  if (el.dataset.pchart !== undefined) {
+    if (ui.kind === 'tarot') ui.pchartT = el.value; else ui.pchartC = el.value;
+    return render();
+  }
   if (el.dataset.chartStat !== undefined) {
     if (ui.kind === 'tarot') ui.tchartStat = el.value; else ui.chartStat = el.value;
     return render();
@@ -2082,12 +2339,23 @@ function exportTarotHands() {
 // ============================================================ DÉMARRAGE
 async function handleJoinLink() {
   const code = location.hash.slice('#join='.length).toUpperCase();
-  const g = store.getState().group;
-  if (g && g.code === code) { go('#/'); return; }
-  if (g && !(await ask({ title: `Rejoindre le groupe ${code} ?`, message: `Vous quitterez « ${g.name} » sur ce téléphone.`, ok: 'Rejoindre' }))) { go('#/'); return; }
-  if (g) store.leaveGroup();
-  ui.joinCode = code;
   history.replaceState(null, '', location.pathname);
+  const known = store.listGroups().find((g) => g.code === code);
+  if (known) { store.switchGroup(known.id); go('#/'); return; }
+  if (store.getState().group) {
+    // Déjà dans un groupe : on ajoute celui-ci à la liste
+    if (!(await ask({ title: `Rejoindre le groupe ${code} ?`, message: 'Il s\'ajoutera à vos groupes ; vous pourrez passer de l\'un à l\'autre.', ok: 'Rejoindre' }))) { render(); return; }
+    try {
+      await store.joinGroup(code);
+      go('#/');
+      toast(`Bienvenue dans « ${store.getState().group.name} »`);
+    } catch (e) {
+      toast(/inconnu/i.test(e.message) ? 'Code inconnu, vérifiez-le' : `Connexion impossible : ${e.message}`);
+      render();
+    }
+    return;
+  }
+  ui.joinCode = code;
   render();
 }
 
@@ -2111,11 +2379,11 @@ store.subscribe((_, dataChanged) => {
 });
 
 store.load();
-if (EMBED && !store.getState().group) store.replaceAll(buildDemo(store.uuid));
+if (EMBED && !store.getState().group) store.addGroups(buildDemoGroups(store.uuid));
 if (!EMBED && location.hash.startsWith('#join=')) handleJoinLink();
 else render();
 store.startPolling();
-store.sync();
+store.sync(true);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.CONTREE_NO_SW) {
   // updateViaCache 'none' : le téléphone vérifie toujours si sw.js a changé

@@ -566,3 +566,16 @@ p { margin: 0 0 10px; }
   width: 100%; height: var(--h); border-radius: 10px 10px 0 0; background: rgba(255,255,255,.18);
   display: grid; place-items: center; font: 900 22px var(--display); color: var(--gold);
 }
+
+/* ---------- Groupes ---------- */
+.gswitch {
+  border: 0; background: none; color: inherit; font: inherit; padding: 0; max-width: 100%;
+  display: inline-flex; align-items: center; gap: 8px; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gswitch .chev {
+  flex: none; font: 700 12px/1 var(--body); background: rgba(255,255,255,.18);
+  border-radius: 999px; padding: 4px 8px;
+}
+.gdot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); flex: none; }
+.gdot.on { border-color: var(--blue); background: radial-gradient(circle, var(--blue) 45%, transparent 50%); }

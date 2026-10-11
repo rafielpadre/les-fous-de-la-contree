@@ -2,30 +2,36 @@
 import { gameTotals, DEFAULT_RULES } from './scoring.js';
 import { tarotTotals, OBJECTIVES, DEFAULT_TAROT_RULES } from './tarot.js';
 
-export function buildDemo(uuid) {
-  let seed = 7;
+export function buildDemo(uuid, opts = {}) {
+  const o = {
+    names: ['Rafael', 'Camille', 'Hugo', 'Léa', 'Malik', 'Inès'],
+    skill: [0.62, 0.55, 0.5, 0.58, 0.45, 0.52],
+    seed: 7, seed2: 42, nContree: 13, nTarot: 11, groupName: 'Démo des Fous', persons: {},
+    ...opts,
+  };
+  let seed = o.seed;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
 
-  const names = ['Rafael', 'Camille', 'Hugo', 'Léa', 'Malik', 'Inès'];
-  const skill = [0.62, 0.55, 0.5, 0.58, 0.45, 0.52]; // propension à réussir ses contrats
+  const names = o.names;
+  const skill = o.skill; // propension à réussir ses contrats
   const now = Date.now();
   const records = {};
   const add = (kind, data, id = uuid()) => {
     records[id] = { id, kind, data, deleted: false, ts: now };
     return id;
   };
-  const pids = names.map((name) => add('player', { name, photo: null, createdAt: now - 60 * 864e5 }));
+  const pids = names.map((name) => add('player', { name, photo: null, personId: o.persons[name] || null, createdAt: now - 60 * 864e5 }));
   const sk = Object.fromEntries(pids.map((id, i) => [id, skill[i]]));
 
   const rules = { ...DEFAULT_RULES, target: 1000 };
   let t = now - 45 * 864e5;
-  for (let gi = 0; gi < 13; gi++) {
+  for (let gi = 0; gi < o.nContree; gi++) {
     const four = [...pids].sort(() => rnd() - 0.5).slice(0, 4);
     const teams = [[four[0], four[1]], [four[2], four[3]]];
     const gid = uuid();
     const hands = [];
-    const running = gi === 12; // dernière partie en cours
+    const running = gi === o.nContree - 1; // dernière partie en cours
     for (let hi = 0; hi < 40; hi++) {
       const all = teams.flat();
       const taker = pick(all);
@@ -58,14 +64,14 @@ export function buildDemo(uuid) {
     t += 3 * 864e5 + Math.floor(rnd() * 864e5);
   }
   // ---- Tarot : une dizaine de parties à 4 et 5 joueurs (tirage indépendant)
-  let seed2 = 42;
+  let seed2 = o.seed2;
   const r2 = () => ((seed2 = (seed2 * 48271) % 2147483647) / 2147483647);
   const pick2 = (arr) => arr[Math.floor(r2() * arr.length)];
   let t2 = now - 40 * 864e5;
-  for (let gi = 0; gi < 11; gi++) {
-    const n = gi % 3 === 0 ? 5 : 4;
+  for (let gi = 0; gi < o.nTarot; gi++) {
+    const n = Math.min(names.length, gi % 3 === 0 ? 5 : 4);
     const players = [...pids].sort(() => r2() - 0.5).slice(0, n);
-    const running = gi === 10;
+    const running = gi === o.nTarot - 1;
     const rules = { ...DEFAULT_TAROT_RULES, mode: 'hands', nHands: 10 };
     const gid = uuid();
     const hands = [];
@@ -96,8 +102,20 @@ export function buildDemo(uuid) {
   const groupId = uuid();
   records[groupId] = { id: groupId, kind: 'settings', data: { rules: { target: 1000 } }, deleted: false, ts: now };
   return {
-    group: { id: groupId, code: 'LOCAL', name: 'Démo des Fous', local: true },
+    group: { id: groupId, code: 'LOCAL', name: o.groupName, local: true },
     records,
     dirty: [],
   };
+}
+
+/** Démo à deux groupes : Rafael et Léa jouent dans les deux (fiches reliées). */
+export function buildDemoGroups(uuid) {
+  const persons = { Rafael: uuid(), 'Léa': uuid() };
+  const main = buildDemo(uuid, { persons });
+  const cousins = buildDemo(uuid, {
+    names: ['Rafael', 'Léa', 'Tom', 'Jade', 'Nora'],
+    skill: [0.6, 0.55, 0.5, 0.48, 0.57],
+    seed: 1234, seed2: 777, nContree: 7, nTarot: 6, groupName: 'Les cousins', persons,
+  });
+  return [main, cousins];
 }
