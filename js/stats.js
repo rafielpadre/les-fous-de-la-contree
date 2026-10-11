@@ -97,6 +97,10 @@ export function computeStats(players, games, hands, { minGamesForDuo = 2 } = {})
           tk._made.push(row.scores[att]);
           if (h.capot) tk.capots++;
         } else tk.takesFailed++;
+      }
+      // Annonce, couleur et capot annoncé : c'est la dernière annonce, celle du preneur
+      if (get(h.taker)) {
+        const tk = get(h.taker);
         if (h.bid === 'capot') tk.capotsAnnounced++;
         if (bidValue(h.bid) <= 160) tk._bids.push(bidValue(h.bid));
         tk.suitCounts[h.suit] = (tk.suitCounts[h.suit] || 0) + 1;
@@ -286,9 +290,8 @@ export function timeline(players, games, hands) {
         if (h.shared) { tk.sharedTakes++; if (row.made) tk.sharedMade++; }
         else { tk.soloTakes++; if (row.made) tk.soloMade++; }
         if (row.made) { tk.takesMade++; tk.made.push(row.scores[row.attack]); if (h.capot) tk.capots++; }
-        const bv = bidValue(h.bid);
-        if (bv <= 160) tk.bids.push(bv);
       }
+      if (acc[h.taker] && bidValue(h.bid) <= 160) acc[h.taker].bids.push(bidValue(h.bid));
       for (const pid of teams[1 - row.attack]) {
         if (!acc[pid]) continue;
         acc[pid].defenses++;

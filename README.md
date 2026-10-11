@@ -144,7 +144,7 @@ Chaque partie garde les règles en vigueur au moment de son lancement.
 | Prises, réussies, % réussite / chute | Contrats auxquels le joueur a participé : ses prises **solo** (il est le seul de son équipe à avoir annoncé) et les prises **partagées** (son partenaire avait aussi annoncé ; elles comptent pour les deux). Parties en cours comprises |
 | Prises solo / partagées | Les mêmes chiffres séparés selon le type de prise. Dans la saisie, la case « … avait aussi annoncé » rend la prise partagée |
 | Points moyens par contrat réussi | Moyenne des points marqués par l'équipe sur les contrats réussis auxquels le joueur a participé |
-| Annonce moyenne | Moyenne des annonces de 80 à 160 (capot et générale exclus) |
+| Annonce moyenne | Moyenne des annonces de 80 à 160 faites comme preneur (dernière annonce de l'équipe ; capot et générale exclus) |
 | Contre réussi | Le joueur a contré et le contrat adverse a chuté |
 | Surcontre réussi | Le joueur a surcontré et son contrat est passé |
 | Chutes infligées en défense | Part des contrats adverses qui chutent quand le joueur défend |
@@ -153,6 +153,42 @@ Chaque partie garde les règles en vigueur au moment de son lancement.
 | Évolution | % de victoires et % de prises réussies cumulés après chaque partie |
 
 Exports CSV (ouvrables dans Excel) : **Groupe → Exporter**.
+
+## Tarot
+
+Le sélecteur **Contrée | Tarot**, en haut des onglets Parties, Joueurs, Graphiques et Historique et dans les profils, choisit le jeu affiché. Les profils des joueurs sont communs aux deux jeux, mais leurs statistiques sont séparées.
+
+**Une partie** se joue à 3, 4 ou 5 joueurs, touchés dans l'ordre où ils sont assis : l'app indique qui donne. Elle dure soit un **nombre de donnes fixé**, auquel cas elle se termine toute seule, soit en **partie libre**, et on la termine avec « Terminer la partie ». Le gagnant est le 1ᵉʳ au classement ; le podium regroupe les 3 premiers, ex aequo compris.
+
+**Saisie d'une donne :**
+- le preneur et le contrat ;
+- à 5, le joueur appelé (« lui-même » si le preneur s'est appelé) ;
+- le nombre de bouts de l'attaque et ses points, ou ceux de la défense (demi-points acceptés : 45,5) ;
+- en option : petit au bout, poignées, chelem et misères.
+
+**Barème (Fédération Française de Tarot).** Notations : *P* = points de l'attaque sur 91, *O* = objectif (0 bout : 56, 1 : 51, 2 : 41, 3 : 36), *k* = Petite 1, Garde 2, Garde sans 4, Garde contre 6, *e* = |*P* − *O*| arrondi au point supérieur.
+
+| Élément | Valeur, vue du preneur |
+|---|---|
+| Contrat | ±(25 + *e*) × *k* (+ si *P* ≥ *O*) |
+| Petit au bout | ±10 × *k* au camp qui l'a mené au dernier pli (à l'autre camp s'il y est pris) |
+| Poignée simple / double / triple | ±20 / 30 / 40 au camp qui gagne la donne |
+| Chelem | +400 annoncé réussi, +200 non annoncé réussi, −200 annoncé raté |
+| Misère (option) | +10 de chaque autre joueur pour celui qui l'annonce |
+
+La somme *D* de ces éléments est retirée à chaque défenseur. Le preneur gagne +2*D* à 3 joueurs et +3*D* à 4. À 5, il gagne +2*D* et l'appelé +*D*, ou +4*D* s'il est seul.
+
+*Exemple : à 4, Garde, 2 bouts, 47 points → (25 + 6) × 2 = 62 ; preneur +186, chaque défenseur −62.*
+
+**Statistiques tarot :**
+- parties, victoires, podiums, place moyenne, score final moyen et meilleur score ;
+- prises réussies au total et par contrat, gain moyen par prise réussie, bouts moyens ;
+- à 5 : fois appelé, réussite comme appelé, fois appelé lui-même, meilleur partenaire ;
+- % de contrats chutés en défense ;
+- petits au bout, poignées, chelems et misères ;
+- courbes d'évolution.
+
+Les règles par défaut du tarot se règlent dans **Groupe → Règles du tarot**.
 
 ---
 
@@ -185,14 +221,16 @@ Sans configuration, l'app fonctionne entièrement sur un seul téléphone (« mo
 
 ## Développement
 
-- Tests du calcul des points et des statistiques : `node --test tests/scoring.test.js tests/stats.test.js`
+- Tests du calcul des points et des statistiques : `node --test tests/scoring.test.js tests/stats.test.js tests/tarot.test.js`
 - Aucune étape de compilation : HTML, CSS et JavaScript (modules ES) servis tels quels.
 
 ```
 index.html            page unique
 css/app.css           styles
 js/config.js          configuration du serveur (à remplir)
-js/scoring.js         calcul des points (règles)
+js/scoring.js         calcul des points de la contrée
+js/tarot.js           calcul des points du tarot
+js/tarot-stats.js     statistiques du tarot
 js/stats.js           statistiques
 js/store.js           stockage local + synchronisation
 js/app.js             interface

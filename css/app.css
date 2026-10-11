@@ -502,3 +502,67 @@ p { margin: 0 0 10px; }
 .vtable .who i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
 .tabs.five { grid-template-columns: repeat(5, 1fr); }
 .tabs a .ic svg { width: 22px; height: 22px; vertical-align: middle; }
+
+/* ---------- Sélecteur Contrée | Tarot ---------- */
+.kind-switch {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  background: var(--card); border-radius: 999px; box-shadow: var(--shadow);
+}
+.kind-switch button {
+  border: 0; background: none; border-radius: 999px; padding: 9px 10px; min-height: 42px;
+  font: 800 16px/1 var(--display); color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.kind-switch button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+.kind-switch button[aria-pressed="true"] .suit.red { color: #ff8a98; }
+.kind-switch .tk {
+  font: 900 11px/1 var(--display); border: 2px solid currentColor; border-radius: 4px; padding: 2px 3px;
+}
+.empty .tarot-big { font: 900 54px/1 var(--display); color: var(--blue-2); letter-spacing: .02em; }
+
+/* ---------- Tarot : cartes de partie et tableau ---------- */
+.tcard { display: grid; gap: 6px; }
+.tcard-row { display: flex; align-items: center; gap: 8px; }
+.tcard-row .nm { flex: 1; min-width: 0; font-weight: 700; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard-row b { font: 900 18px/1 var(--display); font-variant-numeric: tabular-nums; color: var(--blue); }
+.neg { color: var(--red) !important; }
+.pos { color: var(--green); }
+.tboard { padding: 6px 14px; }
+.tb-row {
+  display: grid; grid-template-columns: 34px 44px 1fr auto auto; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.tb-row:last-child { border-bottom: 0; }
+.tb-rank { font: 900 15px var(--display); color: var(--muted); text-align: center; }
+.tb-row.lead .tb-rank { color: #b07800; }
+.tb-name { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-last { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tb-score { font: 900 30px/1 var(--display); font-stretch: 80%; color: var(--blue); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+.dealer {
+  display: inline-block; margin-left: 8px; font: 700 11px var(--body); color: #8a5a00;
+  background: var(--gold-soft); border-radius: 6px; padding: 1px 6px; vertical-align: 2px;
+}
+
+/* ---------- Tarot : nouvelle partie et saisie ---------- */
+.seats { display: grid; gap: 6px; }
+.seat {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; min-height: 44px;
+  border: 2px dashed rgba(0,0,0,.15); border-radius: var(--r-sm); background: rgba(255,255,255,.6); font-weight: 700;
+}
+.seat.filled { border-style: solid; border-color: transparent; background: var(--card); }
+.seat-n { font: 900 14px var(--display); color: var(--muted); width: 16px; text-align: center; }
+.choice small { font: 700 11px var(--body); }
+.prows { display: grid; gap: 6px; }
+.prow { display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: var(--r-sm); padding: 6px 8px; }
+.prow .nm { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.small-seg button { padding: 5px 11px; font-size: 13px; }
+
+/* ---------- Tarot : podium ---------- */
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; margin-top: 14px; }
+.pod { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 104px; }
+.pod b { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pod span { font: 900 20px var(--display); }
+.pod .av.l { --s: 64px; }
+.pod-step {
+  width: 100%; height: var(--h); border-radius: 10px 10px 0 0; background: rgba(255,255,255,.18);
+  display: grid; place-items: center; font: 900 22px var(--display); color: var(--gold);
+}

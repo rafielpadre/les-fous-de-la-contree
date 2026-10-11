@@ -1,10 +1,10 @@
 // Service worker : permet d'ouvrir l'app sans réseau.
 // Pensez à changer VERSION à chaque mise à jour des fichiers.
-const VERSION = 'fdc-v4';
+const VERSION = 'fdc-v5';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/store.js', 'js/scoring.js', 'js/stats.js',
-  'js/charts.js', 'js/photo.js', 'js/csv.js', 'js/demo.js',
+  'js/charts.js', 'js/photo.js', 'js/csv.js', 'js/demo.js', 'js/tarot.js', 'js/tarot-stats.js',
   'fonts/anybody.woff2', 'fonts/atkinson-400.woff2', 'fonts/atkinson-700.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];

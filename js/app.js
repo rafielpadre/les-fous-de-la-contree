@@ -10,6 +10,11 @@ import { lineChart, multiLineChart, bindMultiLine } from './charts.js';
 import { fileToAvatar } from './photo.js';
 import { toCsv, download } from './csv.js';
 import { buildDemo } from './demo.js';
+import {
+  CONTRACTS, CONTRACT_KEYS, OBJECTIVES, POIGNEES, POIGNEE_TRUMPS, CHELEMS, DEFAULT_TAROT_RULES,
+  tarotHand, tarotTotals, explainTarot,
+} from './tarot.js';
+import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
@@ -52,20 +57,33 @@ let cache = null;
 function D() {
   if (cache && cache.v === version) return cache;
   const players = store.list('player').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const games = store.list('game');
-  const hands = store.list('hand');
+  const allGames = store.list('game');
+  const allHands = store.list('hand');
+  // Contrée (parties sans type, historiques) et tarot (type 'tarot') sont séparés
+  const games = allGames.filter((g) => (g.type || 'contree') === 'contree');
+  const tgames = allGames.filter((g) => g.type === 'tarot');
+  const contreeIds = new Set(games.map((g) => g.id));
+  const tarotIds = new Set(tgames.map((g) => g.id));
+  const hands = allHands.filter((h) => contreeIds.has(h.gameId));
+  const thands = allHands.filter((h) => tarotIds.has(h.gameId));
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
-  const byGame = handsByGame(hands);
+  const byGame = handsByGame(allHands);
   const stats = computeStats(players, games, hands);
   const group = store.getState().group;
   const settings = group ? store.get(group.id) : null;
   const rules = { ...DEFAULT_RULES, ...(settings?.rules || {}) };
+  const trules = { ...DEFAULT_TAROT_RULES, ...(settings?.tarot || {}) };
   const evaluated = games.map((g) => {
     const hs = byGame.get(g.id) || [];
     const res = gameTotals(hs, g.teams, g.rules);
     return { game: g, hands: hs, ...res };
   }).sort((a, b) => (b.game.startedAt ?? 0) - (a.game.startedAt ?? 0));
-  cache = { v: version, players, games, hands, byId, byGame, stats, rules, evaluated, timeline: timeline(players, games, hands) };
+  const tevaluated = evaluateTarot(tgames, thands).sort((a, b) => (b.game.startedAt ?? 0) - (a.game.startedAt ?? 0));
+  cache = {
+    v: version, players, games, hands, byId, byGame, stats, rules, evaluated, timeline: timeline(players, games, hands),
+    tgames, thands, trules, tevaluated, tstats: computeTarotStats(players, tgames, thands),
+    ttimeline: tarotTimeline(players, tgames, thands),
+  };
   return cache;
 }
 const P = (id) => D().byId[id] || { id, name: 'Joueur supprimé' };
@@ -81,7 +99,24 @@ const ui = {
   chartStat: 'winPct',  // statistique affichée dans Graphiques
   chartSel: null,       // [{ id, slot }] joueurs choisis, slot = couleur attribuée
   chartModel: null,
+  tchartStat: 'winPct', // statistique affichée dans Graphiques (tarot)
+  kind: loadKind(),     // jeu affiché : 'contree' | 'tarot'
 };
+
+function loadKind() {
+  try { return localStorage.getItem('fdc:kind') === 'tarot' ? 'tarot' : 'contree'; } catch { return 'contree'; }
+}
+function setKind(k) {
+  ui.kind = k;
+  try { localStorage.setItem('fdc:kind', k); } catch { /* stockage indisponible */ }
+}
+/** Sélecteur Contrée | Tarot en haut des écrans. */
+function kindSwitch() {
+  return `<div class="kind-switch" role="group" aria-label="Jeu">
+    <button data-act="kind" data-v="contree" aria-pressed="${ui.kind === 'contree'}"><span class="suit red">♥</span> Contrée</button>
+    <button data-act="kind" data-v="tarot" aria-pressed="${ui.kind === 'tarot'}"><span class="tk">21</span> Tarot</button>
+  </div>`;
+}
 
 // Couleurs des courbes (ordre fixe, validé pour le daltonisme) ; une couleur reste
 // attachée à un joueur tant qu'il est sélectionné.
@@ -124,13 +159,13 @@ function render() {
   const r = route();
   let page;
   switch (r.name) {
-    case 'game': page = gamePage(r.id); break;
-    case 'players': page = playersPage(); break;
-    case 'player': page = playerPage(r.id); break;
+    case 'game': page = store.get(r.id)?.type === 'tarot' ? tarotGamePage(r.id) : gamePage(r.id); break;
+    case 'players': page = ui.kind === 'tarot' ? tarotPlayersPage() : playersPage(); break;
+    case 'player': page = ui.kind === 'tarot' ? tarotPlayerPage(r.id) : playerPage(r.id); break;
     case 'history': page = historyPage(); break;
     case 'charts': page = chartsPage(); break;
     case 'settings': page = settingsPage(); break;
-    default: page = homePage();
+    default: page = ui.kind === 'tarot' ? tarotHomePage() : homePage();
   }
   app.innerHTML = page;
   if (r.name === 'charts' && ui.chartModel) bindMultiLine(document.querySelector('.chart-card'), ui.chartModel);
@@ -208,7 +243,7 @@ function homePage() {
   const d = D();
   const running = d.evaluated.filter((e) => e.winner === null);
   const finished = d.evaluated.filter((e) => e.winner !== null).slice(0, 3);
-  let body = '';
+  let body = d.players.length ? kindSwitch() : '';
 
   if (!d.players.length) {
     body += `
@@ -390,11 +425,11 @@ function handRow(row, n, teams) {
 // ============================================================ JOUEURS
 function playersPage() {
   const d = D();
-  let body = '';
+  let body = kindSwitch();
   if (!d.players.length) {
     body = '<p class="muted">Aucun joueur pour l\'instant.</p>';
   } else {
-    body += '<ul class="list">';
+    body += '<ul class="list" style="margin-top:14px">';
     const order = [...d.players].sort((a, b) => {
       const sa = d.stats.get(a.id), sb = d.stats.get(b.id);
       return (sb.games > 0) - (sa.games > 0) || (sb.winPct ?? 0) - (sa.winPct ?? 0) || a.name.localeCompare(b.name, 'fr');
@@ -442,6 +477,7 @@ function playerPage(id) {
         <button class="btn light" style="margin-top:10px;min-height:38px;padding:8px 14px" data-act="edit-player" data-id="${p.id}">Modifier le profil</button>
       </div>
     </div>
+    <div style="margin-top:14px">${kindSwitch()}</div>
 
     <h2>Parties</h2>
     <div class="kpis">
@@ -526,18 +562,23 @@ function playerPage(id) {
 // ============================================================ GRAPHIQUES
 function chartsPage() {
   const d = D();
-  const tl = d.timeline;
+  const tarot = ui.kind === 'tarot';
+  const tl = tarot ? d.ttimeline : d.timeline;
+  const STATS = tarot ? TAROT_TIMELINE_STATS : TIMELINE_STATS;
+  const allStats = (id) => (tarot ? d.tstats : d.stats).get(id);
   // Sélection par défaut : les 4 joueurs qui ont le plus joué
   if (!ui.chartSel) {
     ui.chartSel = [...d.players]
-      .sort((a, b) => d.stats.get(b.id).games - d.stats.get(a.id).games)
+      .sort((a, b) => allStats(b.id).games - allStats(a.id).games)
       .slice(0, 4)
       .map((p, i) => ({ id: p.id, slot: i }));
   }
   ui.chartSel = ui.chartSel.filter((x) => d.byId[x.id]);
-  const stat = TIMELINE_STATS.find((s) => s.key === ui.chartStat) || TIMELINE_STATS[0];
+  const chosen = tarot ? ui.tchartStat : ui.chartStat;
+  const stat = STATS.find((s) => s.key === chosen) || STATS[0];
   const pctStat = stat.unit === '%';
-  const fmt = pctStat ? (v) => `${Math.round(v)} %` : stat.unit === 'pts' ? (v) => num(v) : (v) => num(v);
+  const fmt = pctStat ? (v) => `${Math.round(v)} %` : stat.unit === 'rang' || stat.key === 'avgBouts' ? (v) => num(v, 1) : (v) => num(v);
+  const lowerIsBetter = stat.key === 'avgRank';
   const sel = [...ui.chartSel].sort((a, b) => a.slot - b.slot);
   const series = sel.map(({ id, slot }) => ({
     id,
@@ -554,12 +595,13 @@ function chartsPage() {
     ticks: tl.points.map((pt) => shortDate(pt.t)),
     pct: pctStat,
     zeroBase: stat.unit === '',
+    invert: lowerIsBetter,
     fmt,
   };
 
-  let body = `<div class="field" style="margin-top:4px"><label for="chart-stat">Statistique</label>
+  let body = `${kindSwitch()}<div class="field" style="margin-top:14px"><label for="chart-stat">Statistique</label>
     <select class="input" id="chart-stat" data-chart-stat>
-      ${TIMELINE_STATS.map((s) => `<option value="${s.key}" ${s.key === stat.key ? 'selected' : ''}>${s.label}</option>`).join('')}
+      ${STATS.map((s) => `<option value="${s.key}" ${s.key === stat.key ? 'selected' : ''}>${s.label}</option>`).join('')}
     </select></div>
   <h2>Joueurs <span class="small muted" style="font:400 14px var(--body)">${sel.length}/8</span></h2>
   <div class="chips" role="group" aria-label="Joueurs">
@@ -580,7 +622,7 @@ function chartsPage() {
     const rows = series.map((s) => {
       const snap = tl.series[s.id][tl.points.length - 1];
       return { s, v: snap ? snap[stat.key] : null, games: snap ? snap.games : 0 };
-    }).sort((a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity));
+    }).sort((a, b) => (lowerIsBetter ? (a.v ?? Infinity) - (b.v ?? Infinity) : (b.v ?? -Infinity) - (a.v ?? -Infinity)));
     body += `<h2>Aujourd'hui</h2><div class="panel"><table class="vtable">
       <thead><tr><th>Joueur</th><th class="n">${stat.label}</th><th class="n">Parties</th></tr></thead><tbody>
       ${rows.map((r) => `<tr><td><span class="who"><i style="background:${r.s.color}"></i>${esc(r.s.name)}</span></td>
@@ -593,14 +635,16 @@ function chartsPage() {
 // ============================================================ HISTORIQUE
 function historyPage() {
   const d = D();
-  let body = '';
-  if (!d.evaluated.length) body = '<p class="muted">Aucune partie jouée pour l\'instant.</p>';
+  const tarot = ui.kind === 'tarot';
+  const list = tarot ? d.tevaluated : d.evaluated;
+  let body = kindSwitch();
+  if (!list.length) body += '<p class="muted" style="margin-top:14px">Aucune partie jouée pour l\'instant.</p>';
   else {
     let month = '';
-    for (const e of d.evaluated) {
+    for (const e of list) {
       const m = new Date(e.game.startedAt).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
       if (m !== month) { body += `<h2>${m.charAt(0).toUpperCase() + m.slice(1)}</h2>`; month = m; }
-      body += gameCard(e);
+      body += tarot ? tarotGameCard(e) : gameCard(e);
     }
   }
   return shell('Historique', body, { active: 'history' });
@@ -669,9 +713,37 @@ function settingsPage() {
       Attaque : 100 + 100 + 20 = 220 ; défense : 60. Si c'était contré : 200 + 100 + 20 = 320.</p>
     </div>
 
+    <h2>Règles du tarot</h2>
+    <div class="panel">
+      <div class="field" style="margin-top:0"><label for="trule-mode">Durée par défaut</label>
+        <select class="input" id="trule-mode" data-trule="mode">
+          <option value="hands" ${d.trules.mode === 'hands' ? 'selected' : ''}>Nombre de donnes fixé</option>
+          <option value="free" ${d.trules.mode === 'free' ? 'selected' : ''}>Partie libre</option>
+        </select></div>
+      <div class="field"><label for="trule-n">Nombre de donnes par défaut</label>
+        <select class="input" id="trule-n" data-trule="nHands">
+          ${[5, 10, 12, 15, 20, 25, 30].map((v) => `<option value="${v}" ${d.trules.nHands === v ? 'selected' : ''}>${v}</option>`).join('')}
+        </select></div>
+      <div style="margin-top:8px">
+        <label class="toggle"><input type="checkbox" data-trule="pabTimesK" ${d.trules.pabTimesK ? 'checked' : ''}>
+          <span>Petit au bout multiplié par le contrat<br><span class="small muted">Barème FFT. Sinon 10 points fixes.</span></span></label>
+        <label class="toggle"><input type="checkbox" data-trule="miseres" ${d.trules.miseres ? 'checked' : ''}>
+          <span>Annonces de misère</span></label>
+      </div>
+    </div>
+    <div class="panel formula" style="margin-top:12px">
+      <p><code>P</code> = points de l'attaque (sur 91), <code>O</code> = objectif selon les bouts (0 : 56, 1 : 51, 2 : 41, 3 : 36),
+      <code>k</code> = Petite 1, Garde 2, Garde sans 4, Garde contre 6.</p>
+      <p>Donne <code>D = ±(25 + |P − O|) × k</code> ± petit au bout (10 × k) ± poignée (20, 30, 40) + chelem.</p>
+      <p>Chaque défenseur marque <code>−D</code> ; le preneur <code>+2D</code> à 3, <code>+3D</code> à 4 ; à 5, preneur <code>+2D</code> et appelé <code>+D</code> (ou <code>+4D</code> s'il est seul).</p>
+      <p class="muted">Exemple : à 4, Garde, 2 bouts, 47 points → (25 + 6) × 2 = 62 ; preneur +186, défenseurs −62.</p>
+    </div>
+
     ${EMBED ? '' : `<h2>Exporter</h2>
-    <div class="row"><button class="btn light block" data-act="export-stats">Stats (CSV)</button>
-      <button class="btn light block" data-act="export-hands">Donnes (CSV)</button></div>`}
+    <div class="row"><button class="btn light block" data-act="export-stats">Stats contrée</button>
+      <button class="btn light block" data-act="export-hands">Donnes contrée</button></div>
+    <div class="row" style="margin-top:8px"><button class="btn light block" data-act="export-tstats">Stats tarot</button>
+      <button class="btn light block" data-act="export-thands">Donnes tarot</button></div>`}
 
     <h2>Ce téléphone</h2>
     <button class="btn danger block" data-act="leave-group">${local ? 'Effacer les données locales' : 'Quitter le groupe sur ce téléphone'}</button>
@@ -709,7 +781,8 @@ function renderSheet(opening = false) {
   if (!ui.sheet) return closeSheet();
   const prevScroll = sheetRoot.querySelector('.sheet-body')?.scrollTop ?? 0;
   const { kind } = ui.sheet;
-  const html = kind === 'hand' ? handSheet() : kind === 'newGame' ? newGameSheet() : kind === 'player' ? playerSheet() : '';
+  const html = kind === 'hand' ? handSheet() : kind === 'newGame' ? newGameSheet() : kind === 'player' ? playerSheet()
+    : kind === 'thand' ? tarotHandSheet() : kind === 'tnewGame' ? tarotNewGameSheet() : '';
   sheetRoot.innerHTML = `<div class="scrim ${opening ? 'in' : ''}" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
   document.body.style.overflow = 'hidden';
   const body = sheetRoot.querySelector('.sheet-body');
@@ -893,6 +966,7 @@ function savePassedHand() {
 function afterHandChange(gameId, message, undoId = null) {
   const g = store.get(gameId);
   if (!g) return;
+  if (g.type === 'tarot') return afterTarotChange(g, message, undoId);
   const hs = (handsByGame(store.list('hand')).get(gameId)) || [];
   const res = gameTotals(hs, g.teams, g.rules);
   if (res.winner !== null && g.winner !== res.winner) {
@@ -950,7 +1024,7 @@ function startGame(teams, rules) {
 function playerSheet() {
   const dr = ui.sheet.draft;
   const d = D();
-  const used = dr.id && d.games.some((g) => g.teams.flat().includes(dr.id));
+  const used = dr.id && (d.games.some((g) => g.teams.flat().includes(dr.id)) || d.tgames.some((g) => g.players.includes(dr.id)));
   return `${sheetHead(dr.id ? 'Modifier le profil' : 'Nouveau joueur')}
   <div class="sheet-body">
     <div class="row" style="margin-top:6px">
@@ -1015,6 +1089,588 @@ function toast(message, action = null) {
   const el = document.getElementById('toast');
   el.innerHTML = `<div class="toast" role="status">${esc(message)}${action ? `<button data-act="${action.act}" data-id="${action.id}">${action.label}</button>` : ''}</div>`;
   toastTimer = setTimeout(() => { el.innerHTML = ''; }, action ? 5000 : 2500);
+}
+
+// =====================================================================
+//  TAROT — écrans
+// =====================================================================
+const RANK_LABEL = (r) => (r === 1 ? '1ᵉʳ' : `${r}ᵉ`);
+const signed = (v) => (v > 0 ? `+${v}` : `${v}`);
+
+function tarotRankPlayers() {
+  const d = D();
+  return d.players
+    .map((p) => ({ p, s: d.tstats.get(p.id) }))
+    .filter((x) => x.s.games > 0)
+    .sort((a, b) => b.s.winPct - a.s.winPct || a.s.avgRank - b.s.avgRank || b.s.games - a.s.games);
+}
+
+// ---------- Accueil tarot
+function tarotHomePage() {
+  const d = D();
+  const running = d.tevaluated.filter((e) => !e.finished);
+  const finished = d.tevaluated.filter((e) => e.finished).slice(0, 3);
+  let body = kindSwitch();
+  if (running.length) {
+    body += '<h2>En cours</h2>' + running.map((e) => tarotGameCard(e)).join('');
+  } else {
+    body += `<div class="empty panel" style="margin-top:14px">
+        <div class="big tarot-big">21</div>
+        <h2 style="margin-top:14px">Pas de partie de tarot en cours</h2>
+        <p class="muted">${d.players.length < 3 ? `Ajoutez encore ${3 - d.players.length} joueur${d.players.length === 2 ? '' : 's'} pour jouer (3 à 5 joueurs).` : 'De 3 à 5 joueurs, avec le barème de la Fédération.'}</p>
+      </div>`;
+  }
+  const ranked = tarotRankPlayers().slice(0, 5);
+  if (ranked.length) {
+    body += '<h2>Classement</h2><ul class="list">';
+    body += ranked.map(({ p, s }, i) => `
+      <li><a class="item" href="#/player/${p.id}" style="text-decoration:none;color:inherit">
+        <span class="rank ${i === 0 ? 'g1' : ''}">${i + 1}</span>${avatar(p)}
+        <span class="main"><span class="t">${esc(p.name)}</span><br><span class="s">${s.wins} victoire${s.wins > 1 ? 's' : ''} sur ${s.games} · place moy. ${num(s.avgRank, 1)}</span></span>
+        <span class="r">${pct(s.winPct)}</span></a></li>`).join('');
+    body += '</ul>';
+  }
+  if (finished.length) body += '<h2>Dernières parties</h2>' + finished.map((e) => tarotGameCard(e)).join('');
+  const fab = d.players.length >= 3
+    ? '<button class="btn gold block" data-act="new-tgame">Nouvelle partie de tarot</button>'
+    : '<button class="btn block" data-act="add-player">Ajouter un joueur</button>';
+  return shell(esc(store.getState().group.name), body, { fab, active: 'home' });
+}
+
+function tarotProgress(e) {
+  const r = e.rules;
+  return r.mode === 'hands' ? `Donne ${Math.min(e.played, r.nHands)}/${r.nHands}` : `${e.played} donne${e.played > 1 ? 's' : ''} · partie libre`;
+}
+
+function tarotGameCard(e) {
+  const g = e.game;
+  const status = e.finished
+    ? `Gagnée par ${e.order.filter((p) => e.rank[p] === 1).map((p) => esc(P(p).name)).join(' et ')} · ${date(g.finishedAt || g.startedAt)}`
+    : tarotProgress(e);
+  return `
+    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px">
+      <div class="tcard">
+        ${e.order.map((pid) => `<div class="tcard-row">${avatar(P(pid), 's')}<span class="nm">${esc(P(pid).name)}</span>
+          <b class="${e.totals[pid] < 0 ? 'neg' : ''}">${e.totals[pid]}</b></div>`).join('')}
+      </div>
+      <div class="small muted" style="margin-top:8px">Tarot à ${g.players.length} · ${status}</div>
+    </a>`;
+}
+
+// ---------- Partie de tarot
+function tarotGamePage(id) {
+  const d = D();
+  const e = d.tevaluated.find((x) => x.game.id === id);
+  if (!e) return shell('Partie', '<p class="muted">Cette partie n\'existe plus.</p>', { back: '#/' });
+  const g = e.game;
+  const n = g.players.length;
+  const last = e.rows[e.rows.length - 1];
+  const dealer = g.players[e.rows.length % n];
+
+  let body = `<div class="tboard panel">
+    ${e.order.map((pid) => `<div class="tb-row ${e.rank[pid] === 1 ? 'lead' : ''}">
+        <span class="tb-rank">${RANK_LABEL(e.rank[pid])}</span>${avatar(P(pid))}
+        <span class="tb-name">${esc(P(pid).name)}${pid === dealer && !e.finished ? '<span class="dealer">donne</span>' : ''}</span>
+        <span class="tb-last">${last ? signed(last.deltas[pid]) : ''}</span>
+        <span class="tb-score ${e.totals[pid] < 0 ? 'neg' : ''}">${e.totals[pid]}</span>
+      </div>`).join('')}
+  </div>`;
+  if (e.rules.mode === 'hands') {
+    body += `<div class="track"><div class="bar"><span class="b0" style="width:${Math.min(100, (100 * e.played) / e.rules.nHands)}%"></span></div>
+      <div class="legend"><span>${tarotProgress(e)}</span><span>Tarot à ${n}</span></div></div>`;
+  } else {
+    body += `<div class="track"><div class="legend"><span>${tarotProgress(e)}</span><span>Tarot à ${n}</span></div></div>`;
+  }
+
+  if (e.finished) {
+    const winners = e.order.filter((p) => e.rank[p] === 1);
+    body += `<div class="panel" style="margin-top:14px;text-align:center">
+      <h3>Victoire de ${winners.map((p) => esc(P(p).name)).join(' et ')}</h3>
+      <button class="btn gold block" data-act="trematch" data-id="${g.id}">Revanche avec les mêmes joueurs</button>
+      ${g.endedManually ? `<button class="link" data-act="treopen" data-id="${g.id}" style="margin-top:6px">Reprendre la partie</button>` : ''}
+    </div>`;
+  }
+
+  // Stats des joueurs
+  const S = d.tstats;
+  const local = {};
+  for (const pid of g.players) local[pid] = { takes: 0, made: 0, called: 0, pab: 0 };
+  for (const row of e.rows) {
+    const h = row.hand;
+    if (h.passed) continue;
+    if (local[h.taker]) { local[h.taker].takes++; if (row.made) local[h.taker].made++; }
+    if (row.partner && local[row.partner]) local[row.partner].called++;
+    if (h.pabBy && !h.pabLost && local[h.pabBy]) local[h.pabBy].pab++;
+  }
+  body += `<div class="row" style="margin:22px 0 10px"><h2 style="margin:0;flex:1">Joueurs</h2>
+    <div class="seg" role="group">
+      <button data-act="game-view" data-v="game" aria-pressed="${ui.gameView === 'game'}">Cette partie</button>
+      <button data-act="game-view" data-v="career" aria-pressed="${ui.gameView === 'career'}">Carrière</button>
+    </div></div><div class="mini-stats">`;
+  body += g.players.map((pid) => {
+    const p = P(pid);
+    let what;
+    if (ui.gameView === 'game') {
+      const s = local[pid];
+      what = `Prises ${s.made}/${s.takes}${n === 5 ? ` · appelé ${s.called}` : ''}<br>Petits au bout ${s.pab}`;
+    } else {
+      const s = S.get(pid);
+      what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takePct)} · place ${num(s.avgRank, 1)}` : '';
+    }
+    return `<a class="mini" href="#/player/${pid}" style="text-decoration:none;color:inherit">
+      <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
+  }).join('');
+  body += '</div>';
+
+  body += '<h2>Donnes</h2>';
+  if (!e.rows.length) body += '<p class="muted">Aucune donne pour l\'instant. Touchez « Nouvelle donne » après chaque main.</p>';
+  else {
+    body += '<ul class="hands panel" style="padding:0 12px">';
+    body += [...e.rows].reverse().map((row, k) => tarotHandRow(row, e.rows.length - k)).join('');
+    body += '</ul>';
+  }
+  body += `<div style="margin-top:22px" class="row wrap">
+      <span class="small muted" style="flex:1">Commencée le ${dateTime(g.startedAt)}</span>
+      ${!e.finished && e.played ? `<button class="link" data-act="tfinish" data-id="${g.id}">Terminer la partie</button>` : ''}
+      <button class="link" style="color:var(--red)" data-act="delete-game" data-id="${g.id}">Supprimer la partie</button>
+    </div>`;
+  const fab = e.finished ? '' : `<button class="btn gold block" data-act="new-hand" data-id="${g.id}">Nouvelle donne</button>`;
+  return shell('Partie de tarot', body, { back: '#/', fab, active: 'home' });
+}
+
+function tarotHandRow(row, n) {
+  const h = row.hand;
+  if (h.passed) {
+    return `<li><button class="hand" data-act="edit-hand" data-id="${h.id}"><span class="n">${n}</span>
+      <span class="what"><b>Donne passée</b><div class="sub">Personne n'a pris</div></span><span class="pts muted">0</span></button></li>`;
+  }
+  const c = CONTRACTS[h.contract];
+  const extra = [`${h.bouts} bout${h.bouts > 1 ? 's' : ''}`, `${String(h.attackPoints).replace('.', ',')} pts`];
+  if (h.pabBy) extra.push(`petit au bout ${esc(P(h.pabBy).name)}${h.pabLost ? ' (pris)' : ''}`);
+  for (const pg of h.poignees || []) extra.push(`poignée ${POIGNEES[pg.type].label.toLowerCase()} ${esc(P(pg.by).name)}`);
+  if (h.chelem && h.chelem !== 'none') extra.push(`chelem ${CHELEMS[h.chelem].label.toLowerCase()}`);
+  for (const m of h.miseres || []) extra.push(`misère ${esc(P(m).name)}`);
+  const res = row.made ? '<span class="tag ok">réussi</span>' : '<span class="tag ko">chuté</span>';
+  const callTxt = row.partner ? ` <span class="muted">avec ${esc(P(row.partner).name)}</span>` : (h.called === h.taker ? ' <span class="muted">seul</span>' : '');
+  const def = row.defenders.length ? row.deltas[row.defenders[0]] : 0;
+  return `<li><button class="hand" data-act="edit-hand" data-id="${h.id}">
+    <span class="n">${n}</span>
+    <span class="what"><b>${esc(P(h.taker).name)}</b>${callTxt} · ${c.label} ${res}<div class="sub">${extra.join(' · ')}</div></span>
+    <span class="pts"><span class="${row.deltas[h.taker] >= 0 ? 'p0' : 'p1'}">${signed(row.deltas[h.taker])}</span><br><span class="muted small">déf. ${signed(def)}</span></span>
+  </button></li>`;
+}
+
+// ---------- Nouvelle partie de tarot
+function tarotStartProblem(dr) {
+  if (dr.players.length < 3) return 'Choisissez 3 à 5 joueurs';
+  if (dr.mode === 'hands' && !(dr.nHands >= 1)) return 'Indiquez le nombre de donnes';
+  return null;
+}
+
+function tarotNewGameSheet() {
+  const dr = ui.sheet.draft;
+  const d = D();
+  const problem = tarotStartProblem(dr);
+  return `${sheetHead('Nouvelle partie de tarot')}
+  <div class="sheet-body">
+    <p class="small muted" style="margin:0 0 10px">Touchez 3 à 5 joueurs dans l'ordre où ils sont assis autour de la table : l'app indiquera qui donne.</p>
+    <div class="seats">${[0, 1, 2, 3, 4].map((i) => {
+      const pid = dr.players[i];
+      return `<div class="seat ${pid ? 'filled' : ''}"><span class="seat-n">${i + 1}</span>${pid ? `${avatar(P(pid), 's')}<span>${esc(P(pid).name)}</span>` : `<span class="muted">${i < 3 ? 'Joueur' : 'Facultatif'}</span>`}</div>`;
+    }).join('')}</div>
+    <div class="field"><span class="lab">Joueurs</span><div class="pick">
+      ${d.players.map((p) => `<button data-act="tpick" data-v="${p.id}" aria-pressed="${dr.players.includes(p.id)}">${avatar(p, 's')}${esc(p.name)}</button>`).join('')}
+      <button data-act="add-player-inline" style="padding:8px 14px">+ Nouveau joueur</button>
+    </div></div>
+    <div class="field"><span class="lab">Durée de la partie</span>
+      <div class="seg" role="group" style="margin-bottom:10px">
+        <button data-act="set" data-k="mode" data-v="hands" aria-pressed="${dr.mode === 'hands'}">Nombre de donnes</button>
+        <button data-act="set" data-k="mode" data-v="free" aria-pressed="${dr.mode === 'free'}">Partie libre</button>
+      </div>
+      ${dr.mode === 'hands' ? `<div class="choices c4">
+        ${[5, 10, 15, 20].map((v) => `<button class="choice" data-act="set" data-k="nHands" data-v="${v}" aria-pressed="${dr.nHands === v}">${v}</button>`).join('')}
+      </div>
+      <input class="input" style="margin-top:8px" inputmode="numeric" data-draft="nHands" placeholder="Autre nombre de donnes" value="${[5, 10, 15, 20].includes(dr.nHands) ? '' : dr.nHands ?? ''}">`
+      : '<p class="small muted" style="margin:0">Vous terminerez la partie avec le bouton « Terminer la partie ».</p>'}
+    </div>
+    <div class="field"><span class="lab">Options</span>
+      <label class="toggle"><input type="checkbox" data-draft="pabTimesK" ${dr.pabTimesK ? 'checked' : ''}>
+        <span>Petit au bout multiplié par le contrat<br><span class="small muted">Barème FFT : 10 × coefficient. Sinon 10 points fixes.</span></span></label>
+      <label class="toggle"><input type="checkbox" data-draft="miseres" ${dr.miseres ? 'checked' : ''}>
+        <span>Annonces de misère<br><span class="small muted">Le joueur reçoit 10 points de chacun des autres.</span></span></label>
+    </div>
+  </div>
+  <div class="sheet-foot">${problem ? `<div class="preview">${problem}</div>` : ''}
+    <button class="btn gold block" data-act="tstart" ${problem ? 'disabled' : ''}>Lancer la partie</button></div>`;
+}
+
+function startTarotGame(players, rules) {
+  const id = store.put('game', { type: 'tarot', players, rules, startedAt: Date.now(), finishedAt: null, endedManually: false });
+  closeSheet();
+  go(`#/game/${id}`);
+}
+
+// ---------- Saisie d'une donne de tarot
+function tarotDraftFrom(h) {
+  return {
+    id: h?.id, taker: h?.taker ?? null, contract: h?.contract ?? null, called: h?.called ?? null,
+    bouts: h?.bouts ?? null, mode: 'attack',
+    points: h?.attackPoints != null ? String(h.attackPoints).replace('.', ',') : '',
+    pabBy: h?.pabBy ?? null, pabLost: !!h?.pabLost,
+    poignees: Object.fromEntries((h?.poignees || []).map((x) => [x.by, x.type])),
+    chelem: h?.chelem ?? 'none', miseres: [...(h?.miseres || [])],
+  };
+}
+
+function parsePoints(str) {
+  if (str === '' || str == null) return null;
+  const v = Number(String(str).replace(',', '.'));
+  return Number.isFinite(v) ? v : NaN;
+}
+
+function tarotDraftToHand(dr) {
+  const v = parsePoints(dr.points);
+  return {
+    taker: dr.taker, contract: dr.contract, called: dr.called, bouts: dr.bouts,
+    attackPoints: v == null ? null : dr.mode === 'attack' ? v : 91 - v,
+    pabBy: dr.pabBy, pabLost: dr.pabBy ? !!dr.pabLost : false,
+    poignees: Object.entries(dr.poignees).filter(([, t]) => t).map(([by, type]) => ({ by, type })),
+    chelem: dr.chelem || 'none', miseres: dr.miseres || [],
+  };
+}
+
+function tarotValidity(dr, game) {
+  if (!dr.taker) return 'Choisissez le preneur';
+  if (!dr.contract) return 'Choisissez le contrat';
+  if (game.players.length === 5 && !dr.called) return 'Indiquez le joueur appelé';
+  if (dr.bouts == null) return 'Indiquez le nombre de bouts';
+  const v = parsePoints(dr.points);
+  if (v == null) return 'Indiquez les points faits';
+  if (Number.isNaN(v) || v < 0 || v > 91 || Math.round(v * 2) !== v * 2) return 'Les points vont de 0 à 91, par demi-point';
+  return null;
+}
+
+function fixTarotDraft(dr, game) {
+  if (game.players.length !== 5) dr.called = null;
+}
+
+function tarotHandSheet() {
+  const { draft: dr, game } = ui.sheet;
+  const players = game.players;
+  const n = players.length;
+  const cols = n === 3 ? 'c3' : n === 4 ? 'c4' : 'c5';
+  const pbtn = (k, pid, label = null) => `<button class="choice" data-act="set" data-k="${k}" data-v="${pid}" aria-pressed="${dr[k] === pid}">
+      ${avatar(P(pid), 's')}<span class="nm">${label ?? esc(P(pid).name)}</span></button>`;
+  const rules = { ...DEFAULT_TAROT_RULES, ...game.rules };
+
+  let html = sheetHead(dr.id ? 'Modifier la donne' : 'Nouvelle donne',
+    dr.id ? '' : '<button class="link" data-act="pass-hand" style="margin-right:6px">Tous passent</button>');
+  html += '<div class="sheet-body">';
+  html += `<div class="field" style="margin-top:4px"><span class="lab">Preneur</span><div class="choices ${cols}">${players.map((pid) => pbtn('taker', pid)).join('')}</div></div>`;
+  html += `<div class="field"><span class="lab">Contrat</span><div class="choices c2">
+    ${CONTRACT_KEYS.map((c) => `<button class="choice" data-act="set" data-k="contract" data-v="${c}" aria-pressed="${dr.contract === c}">
+      ${CONTRACTS[c].label}<small class="muted">× ${CONTRACTS[c].k}</small></button>`).join('')}
+  </div></div>`;
+  if (n === 5) {
+    html += `<div class="field"><span class="lab">Roi appelé chez <span class="hint">(partenaire du preneur)</span></span><div class="choices c5">
+      ${players.map((pid) => pbtn('called', pid, pid === dr.taker ? 'lui-même' : null)).join('')}</div></div>`;
+  }
+  html += `<div class="field"><span class="lab">Bouts de l'attaque <span class="hint">(objectif)</span></span><div class="choices c4">
+    ${[0, 1, 2, 3].map((b) => `<button class="choice big" data-act="set" data-k="bouts" data-v="${b}" aria-pressed="${dr.bouts === b}">${b}<small>${OBJECTIVES[b]} pts</small></button>`).join('')}
+  </div></div>`;
+  html += `<div class="field"><div class="row" style="margin:0 0 8px"><span class="lab" style="flex:1;margin:0">Points comptés par</span>
+      <div class="seg"><button data-act="set" data-k="mode" data-v="attack" aria-pressed="${dr.mode === 'attack'}">l'attaque</button>
+      <button data-act="set" data-k="mode" data-v="defense" aria-pressed="${dr.mode === 'defense'}">la défense</button></div></div>
+    <div class="points">
+      <button data-act="bump" data-v="-5" aria-label="Moins 5">−5</button>
+      <input class="input" id="pts" inputmode="decimal" maxlength="4" placeholder="0" value="${esc(dr.points)}" data-draft="points"
+        aria-label="Points faits par ${dr.mode === 'attack' ? 'l\'attaque' : 'la défense'}">
+      <button data-act="bump" data-v="5" aria-label="Plus 5">+5</button>
+    </div>
+    <p class="small muted" style="margin:6px 0 0">Sur 91 points ; les demi-points s'écrivent 45,5.</p></div>`;
+
+  // Petit au bout
+  html += `<div class="field"><span class="lab">Petit au bout</span><div class="choices ${n === 3 ? 'c4' : n === 4 ? 'c5' : 'c3'}">
+    <button class="choice" data-act="set" data-k="pabBy" data-v="" aria-pressed="${!dr.pabBy}">Personne</button>
+    ${players.map((pid) => pbtn('pabBy', pid)).join('')}</div>
+    ${dr.pabBy ? `<label class="toggle"><input type="checkbox" data-draft="pabLost" ${dr.pabLost ? 'checked' : ''}>
+      <span>Le Petit a été pris au dernier pli<br><span class="small muted">La prime va alors à l'autre camp.</span></span></label>` : ''}
+  </div>`;
+
+  // Poignées
+  const trumps = POIGNEE_TRUMPS[n];
+  html += `<div class="field"><span class="lab">Poignées <span class="hint">(${trumps[0]}, ${trumps[1]} ou ${trumps[2]} atouts)</span></span><div class="prows">
+    ${players.map((pid) => `<div class="prow">${avatar(P(pid), 's')}<span class="nm">${esc(P(pid).name)}</span>
+      <div class="seg small-seg">${['', 'simple', 'double', 'triple'].map((t) => `<button data-act="tpoignee" data-id="${pid}" data-v="${t}"
+        aria-pressed="${(dr.poignees[pid] || '') === t}">${t ? POIGNEES[t].label[0] : '–'}</button>`).join('')}</div></div>`).join('')}
+  </div><p class="small muted" style="margin:6px 0 0">S = simple (20), D = double (30), T = triple (40), au camp qui gagne la donne.</p></div>`;
+
+  // Chelem
+  html += `<div class="field"><span class="lab">Chelem</span><div class="choices c2">
+    ${Object.entries(CHELEMS).map(([k, c]) => `<button class="choice" data-act="set" data-k="chelem" data-v="${k}" aria-pressed="${dr.chelem === k}">
+      ${c.label}${c.points ? `<small class="muted">${signed(c.points)}</small>` : ''}</button>`).join('')}
+  </div></div>`;
+
+  if (rules.miseres) {
+    html += `<div class="field"><span class="lab">Misère annoncée par</span><div class="pick">
+      ${players.map((pid) => `<button data-act="tmisere" data-v="${pid}" aria-pressed="${dr.miseres.includes(pid)}">${avatar(P(pid), 's')}${esc(P(pid).name)}</button>`).join('')}
+    </div></div>`;
+  }
+  if (dr.id) html += '<button class="btn danger block" style="margin-top:22px" data-act="delete-hand">Supprimer cette donne</button>';
+  html += '</div>';
+  html += `<div class="sheet-foot"><div id="preview">${tarotPreviewHtml()}</div>
+    <button class="btn gold block" data-act="save-hand" ${tarotValidity(dr, game) ? 'disabled' : ''} id="save-hand">Enregistrer la donne</button></div>`;
+  return html;
+}
+
+function tarotPreviewHtml() {
+  const { draft: dr, game } = ui.sheet;
+  const why = tarotValidity(dr, game);
+  if (why) return `<div class="preview">${why}</div>`;
+  const res = tarotHand(tarotDraftToHand(dr), game.players, game.rules);
+  const parts = game.players.map((pid) => `${esc(P(pid).name)} <b class="${res.deltas[pid] < 0 ? 'neg' : 'pos'}">${signed(res.deltas[pid])}</b>`).join(' · ');
+  return `<div class="preview ${res.made ? 'ok' : 'ko'}">
+    <div class="big">${res.made ? 'Contrat réussi' : 'Contrat chuté'}</div>
+    <div class="small">${parts}</div>
+    <div class="small muted" style="margin-top:2px">${explainTarot(res)}</div></div>`;
+}
+
+function updateTarotFooter() {
+  const pv = document.getElementById('preview');
+  if (pv) pv.innerHTML = tarotPreviewHtml();
+  const btn = document.getElementById('save-hand');
+  if (btn) btn.disabled = !!tarotValidity(ui.sheet.draft, ui.sheet.game);
+}
+
+function saveTarotHand() {
+  const { draft: dr, game } = ui.sheet;
+  if (tarotValidity(dr, game)) return;
+  const base = tarotDraftToHand(dr);
+  if (dr.id) {
+    store.put('hand', { ...store.get(dr.id), ...base, passed: false }, dr.id);
+    closeSheet();
+    return afterHandChange(game.id, 'Donne modifiée');
+  }
+  const hs = D().byGame.get(game.id) || [];
+  const idx = hs.reduce((m, h) => Math.max(m, h.idx ?? 0), -1) + 1;
+  const id = store.put('hand', { ...base, gameId: game.id, idx, createdAt: Date.now() });
+  closeSheet();
+  return afterHandChange(game.id, 'Donne enregistrée', id);
+}
+
+/** Fin de partie automatique (nombre de donnes atteint) ou annulée si on supprime une donne. */
+function afterTarotChange(g, message, undoId) {
+  const hs = handsByGame(store.list('hand')).get(g.id) || [];
+  const rules = { ...DEFAULT_TAROT_RULES, ...g.rules };
+  const res = tarotTotals({ ...g, finishedAt: null }, hs);
+  if (rules.mode === 'hands' && !g.endedManually) {
+    if (res.finished && !g.finishedAt) {
+      store.patch(g.id, { finishedAt: Date.now() });
+      showTarotWin(g, res);
+    } else if (!res.finished && g.finishedAt) {
+      store.patch(g.id, { finishedAt: null });
+    }
+  }
+  toast(message, undoId ? { label: 'Annuler', act: 'undo-hand', id: undoId } : null);
+}
+
+function showTarotWin(game, res) {
+  const pod = res.order.slice(0, 3);
+  const pieces = Array.from({ length: 24 }, (_, i) => {
+    const s = ['21', '♥', '♣', '1'][i % 4];
+    return `<i style="left:${Math.random() * 100}%;color:${s === '♥' ? '#ef4a5e' : '#fff'};animation-duration:${2.4 + Math.random() * 2.5}s;animation-delay:${Math.random() * 1.2}s;--rot:${Math.random() * 720 - 360}deg">${s}</i>`;
+  }).join('');
+  const step = (pid, h) => `<div class="pod" style="--h:${h}px">${avatar(P(pid), 'l')}<b>${esc(P(pid).name)}</b><span>${res.totals[pid]}</span><div class="pod-step">${RANK_LABEL(res.rank[pid])}</div></div>`;
+  const heights = [96, 64, 40];
+  const layout = pod.length === 3 ? [pod[1], pod[0], pod[2]] : pod;
+  overlayRoot.innerHTML = `<div class="win felt" role="dialog" aria-modal="true">
+    <div class="rain">${pieces}</div>
+    <div class="box">
+      <p class="trophy">Partie terminée !</p>
+      <div class="podium">${layout.map((pid) => step(pid, heights[res.order.indexOf(pid)])).join('')}</div>
+      <button class="btn gold block" data-act="close-win" style="margin-top:22px">Voir la partie</button>
+    </div></div>`;
+}
+
+// ---------- Joueurs (tarot)
+function tarotPlayersPage() {
+  const d = D();
+  let body = kindSwitch();
+  if (!d.players.length) body += '<p class="muted">Aucun joueur pour l\'instant.</p>';
+  else {
+    const order = [...d.players].sort((a, b) => {
+      const sa = d.tstats.get(a.id), sb = d.tstats.get(b.id);
+      return (sb.games > 0) - (sa.games > 0) || (sb.winPct ?? 0) - (sa.winPct ?? 0) || a.name.localeCompare(b.name, 'fr');
+    });
+    body += '<ul class="list" style="margin-top:14px">' + order.map((p) => {
+      const s = d.tstats.get(p.id);
+      return `<li><a class="item" href="#/player/${p.id}" style="text-decoration:none;color:inherit">${avatar(p)}
+        <span class="main"><span class="t">${esc(p.name)}</span><br>
+        <span class="s">${s.games} partie${s.games > 1 ? 's' : ''} · prises ${s.takesMade}/${s.takes} · place moy. ${num(s.avgRank, 1)}</span></span>
+        <span class="r">${pct(s.winPct)}<small>victoires</small></span></a></li>`;
+    }).join('') + '</ul>';
+
+    // Duos à 5 : preneur + appelé
+    const duos = new Map();
+    for (const p of d.players) {
+      for (const [q, v] of Object.entries(d.tstats.get(p.id).partners)) {
+        const key = [p.id, q].sort().join('|');
+        if (!duos.has(key)) duos.set(key, { ids: key.split('|'), ...v });
+      }
+    }
+    const list = [...duos.values()].map((x) => ({ ...x, pct: (100 * x.made) / x.hands }))
+      .sort((a, b) => b.pct - a.pct || b.hands - a.hands).slice(0, 6);
+    if (list.length) {
+      body += '<h2>Meilleurs duos à 5</h2><p class="small muted" style="margin-top:-4px">Contrats réussis quand l\'un appelle l\'autre.</p><ul class="list">';
+      body += list.map((x) => `<li><div class="item">
+          <div class="av-pair">${x.ids.map((id) => avatar(P(id), 's')).join('')}</div>
+          <span class="main"><span class="t">${x.ids.map((id) => esc(P(id).name)).join(' & ')}</span><br>
+          <span class="s">${x.made} réussi${x.made > 1 ? 's' : ''} sur ${x.hands} contrat${x.hands > 1 ? 's' : ''}</span></span>
+          <span class="r">${pct(x.pct)}</span></div></li>`).join('');
+      body += '</ul>';
+    }
+  }
+  return shell('Joueurs', body, { fab: '<button class="btn block" data-act="add-player">Ajouter un joueur</button>', active: 'players' });
+}
+
+function tarotPlayerPage(id) {
+  const d = D();
+  const p = d.byId[id];
+  if (!p) return shell('Joueur', '<p class="muted">Ce joueur n\'existe plus.</p>', { back: '#/players' });
+  const s = d.tstats.get(id);
+  let body = `
+    <div class="hero felt">
+      ${avatar(p, 'l')}
+      <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
+        <p>${s.games} partie${s.games > 1 ? 's' : ''} de tarot · ${s.handsPlayed} donnes jouées</p>
+        <button class="btn light" style="margin-top:10px;min-height:38px;padding:8px 14px" data-act="edit-player" data-id="${p.id}">Modifier le profil</button>
+      </div>
+    </div>
+    <div style="margin-top:14px">${kindSwitch()}</div>
+
+    <h2>Parties</h2>
+    <div class="kpis">
+      <div class="kpi blue"><div class="v">${pct(s.winPct)}</div><div class="l">de victoires (1ᵉʳ)</div></div>
+      <div class="kpi gold"><div class="v">${pct(s.podiumPct)}</div><div class="l">de podiums</div></div>
+      <div class="kpi"><div class="v">${num(s.avgRank, 1)}</div><div class="l">place moyenne</div></div>
+    </div>
+    <div class="panel" style="margin-top:10px"><dl class="dl">
+      <dt>Victoires</dt><dd>${s.wins}/${s.games}</dd>
+      <dt>Podiums</dt><dd>${s.podiums}</dd>
+      <dt>Score final moyen</dt><dd>${num(s.avgFinal)}</dd>
+      <dt>Meilleur score final</dt><dd>${num(s.best)}</dd>
+    </dl></div>
+
+    <h2>Prises</h2>
+    <div class="kpis">
+      <div class="kpi green"><div class="v">${s.takesMade}/${s.takes}</div><div class="l">prises réussies</div></div>
+      <div class="kpi green"><div class="v">${pct(s.takePct)}</div><div class="l">de réussite</div></div>
+      <div class="kpi red"><div class="v">${pct(s.takeFailPct)}</div><div class="l">de chutes</div></div>
+    </div>
+    <div class="panel" style="margin-top:10px">
+      <table class="vtable"><thead><tr><th>Contrat</th><th class="n">Réussies</th><th class="n">%</th></tr></thead><tbody>
+      ${CONTRACT_KEYS.map((c) => {
+        const x = s.byContract[c] || { takes: 0, made: 0 };
+        return `<tr><td>${CONTRACTS[c].label}</td><td class="n">${x.made}/${x.takes}</td><td class="n"><b>${pct(x.pct)}</b></td></tr>`;
+      }).join('')}
+      </tbody></table>
+      <dl class="dl" style="margin-top:6px">
+        <dt>Gain moyen par prise réussie</dt><dd>${num(s.avgGainMade)}</dd>
+        <dt>Bouts moyens quand il prend</dt><dd>${num(s.avgBouts, 1)}</dd>
+      </dl>
+    </div>
+
+    <h2>À 5 joueurs</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="v">${s.called}</div><div class="l">fois appelé</div></div>
+      <div class="kpi green"><div class="v">${pct(s.calledPct)}</div><div class="l">de réussite comme appelé</div></div>
+      <div class="kpi"><div class="v">${s.selfCalls}</div><div class="l">fois appelé lui-même</div></div>
+    </div>
+    <div class="panel" style="margin-top:10px"><dl class="dl">
+      <dt>Meilleur partenaire</dt><dd>${s.bestPartner ? `${esc(P(s.bestPartner.id).name)} (${pct(s.bestPartner.pct)})` : '–'}</dd>
+    </dl>${!s.bestPartner ? '<p class="small muted" style="margin:8px 0 0">À partir de 2 contrats joués ensemble (l\'un appelant l\'autre).</p>' : ''}</div>
+
+    <h2>Défense et exploits</h2>
+    <div class="kpis">
+      <div class="kpi blue"><div class="v">${pct(s.defensePct)}</div><div class="l">de contrats chutés en défense</div></div>
+      <div class="kpi gold"><div class="v">${s.pabMade}</div><div class="l">petits au bout réussis</div></div>
+      <div class="kpi"><div class="v">${s.chelems}</div><div class="l">chelems réussis</div></div>
+    </div>
+    <div class="panel" style="margin-top:10px"><dl class="dl">
+      <dt>Petits pris au dernier pli</dt><dd>${s.pabLost}</dd>
+      <dt>Poignées montrées</dt><dd>${s.poignees}</dd>
+      <dt>Misères annoncées</dt><dd>${s.miseres}</dd>
+    </dl></div>`;
+
+  body += '<h2>Évolution</h2><div class="panel">';
+  body += lineChart([
+    { name: '% de victoires', color: '#3a50c2', values: s.timeline.map((t) => t.winPct) },
+    { name: '% de prises réussies', color: '#12936a', values: s.timeline.map((t) => t.takePct) },
+  ], { labels: s.timeline.map((_, i) => i + 1) });
+  body += '<p class="small muted" style="margin:6px 0 0">Valeurs cumulées après chaque partie terminée.</p></div>';
+
+  const mine = d.tevaluated.filter((e) => e.finished && e.game.players.includes(id)).slice(0, 10);
+  if (mine.length) {
+    body += '<h2>Dernières parties</h2><ul class="list">';
+    body += mine.map((e) => `<li><a class="item" href="#/game/${e.game.id}" style="text-decoration:none;color:inherit">
+        <span class="tag ${e.rank[id] === 1 ? 'ok' : e.rank[id] <= 3 ? 'x2' : 'ko'}" style="margin:0">${RANK_LABEL(e.rank[id])}</span>
+        <span class="main"><span class="t">Tarot à ${e.game.players.length}</span><br><span class="s">${date(e.game.finishedAt)}</span></span>
+        <span class="r" style="font-size:17px">${e.totals[id]}</span></a></li>`).join('');
+    body += '</ul>';
+  }
+  return shell('Profil', body, { back: '#/players', active: 'players' });
+}
+
+// ---------- Actions tarot
+async function handleTarot(act, el, id) {
+  const sh = ui.sheet;
+  switch (act) {
+    case 'new-tgame': {
+      const r = D().trules;
+      return openSheet('tnewGame', { players: [], mode: r.mode, nHands: r.nHands, pabTimesK: r.pabTimesK, miseres: r.miseres });
+    }
+    case 'tpick': {
+      const pl = sh.draft.players;
+      const pid = el.dataset.v;
+      const at = pl.indexOf(pid);
+      if (at >= 0) pl.splice(at, 1);
+      else if (pl.length >= 5) return toast('5 joueurs au maximum');
+      else pl.push(pid);
+      return renderSheet();
+    }
+    case 'tstart': {
+      const dr = sh.draft;
+      if (tarotStartProblem(dr)) return;
+      const rules = { ...D().trules, mode: dr.mode, nHands: dr.nHands, pabTimesK: !!dr.pabTimesK, miseres: !!dr.miseres };
+      return startTarotGame([...dr.players], rules);
+    }
+    case 'trematch': {
+      const g = store.get(id);
+      return startTarotGame([...g.players], { ...g.rules });
+    }
+    case 'tfinish': {
+      if (!(await ask({ title: 'Terminer la partie ?', message: 'Le classement actuel devient le classement final.', ok: 'Terminer' }))) return;
+      const g = store.get(id);
+      store.patch(id, { finishedAt: Date.now(), endedManually: true });
+      const hs = handsByGame(store.list('hand')).get(id) || [];
+      return showTarotWin(g, tarotTotals({ ...g, finishedAt: Date.now() }, hs));
+    }
+    case 'treopen':
+      store.patch(id, { finishedAt: null, endedManually: false });
+      return toast('Partie reprise');
+    case 'tpoignee': {
+      sh.draft.poignees[id] = el.dataset.v || null;
+      return renderSheet();
+    }
+    case 'tmisere': {
+      const m = sh.draft.miseres;
+      const pid = el.dataset.v;
+      const at = m.indexOf(pid);
+      if (at >= 0) m.splice(at, 1); else m.push(pid);
+      return renderSheet();
+    }
+    default:
+  }
 }
 
 // ============================================================ ÉVÉNEMENTS
@@ -1093,6 +1749,8 @@ async function handle(act, el, id) {
       return;
     case 'export-stats': return exportStats();
     case 'export-hands': return exportHands();
+    case 'export-tstats': return exportTarotStats();
+    case 'export-thands': return exportTarotHands();
 
     // ----- feuilles
     case 'scrim':
@@ -1100,17 +1758,19 @@ async function handle(act, el, id) {
     case 'set': {
       const k = el.dataset.k;
       let v = el.dataset.v;
-      if (k === 'bid' || k === 'target') v = /^\d+$/.test(v) ? Number(v) : v;
+      if (['bid', 'target', 'bouts', 'nHands'].includes(k)) v = /^\d+$/.test(v) ? Number(v) : v;
       if (v === '') v = null;
       sh.draft[k] = v;
       if (sh.kind === 'hand') fixHandDraft(sh.draft, sh.game.teams);
+      if (sh.kind === 'thand') fixTarotDraft(sh.draft, sh.game);
       return renderSheet();
     }
     case 'bump': {
-      const n = Math.min(162, Math.max(0, (Number(sh.draft.points) || 0) + Number(el.dataset.v)));
-      sh.draft.points = String(n);
+      const max = sh.kind === 'thand' ? 91 : 162;
+      const n = Math.min(max, Math.max(0, (Number(String(sh.draft.points).replace(',', '.')) || 0) + Number(el.dataset.v)));
+      sh.draft.points = sh.kind === 'thand' ? String(n).replace('.', ',') : String(n);
       document.getElementById('pts').value = sh.draft.points;
-      return updateHandFooter();
+      return sh.kind === 'thand' ? updateTarotFooter() : updateHandFooter();
     }
 
     // ----- parties
@@ -1145,8 +1805,12 @@ async function handle(act, el, id) {
       if (!name?.trim()) return;
       if (D().players.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())) return toast('Un joueur porte déjà ce nom');
       const pid = store.put('player', { name: name.trim().slice(0, 30), createdAt: Date.now() });
-      const free = sh.draft.slots.indexOf(null);
-      if (free >= 0) sh.draft.slots[free] = pid;
+      if (sh.kind === 'tnewGame') {
+        if (sh.draft.players.length < 5) sh.draft.players.push(pid);
+      } else {
+        const free = sh.draft.slots.indexOf(null);
+        if (free >= 0) sh.draft.slots[free] = pid;
+      }
       return renderSheet();
     }
     case 'start-game': {
@@ -1166,6 +1830,7 @@ async function handle(act, el, id) {
       return toast('Partie supprimée');
     }
     case 'game-view': ui.gameView = el.dataset.v; return render();
+    case 'kind': setKind(el.dataset.v); ui.chartSel = null; return render();
     case 'chart-stat': ui.chartStat = el.dataset.v; return render();
     case 'chart-player': {
       const pid = el.dataset.v;
@@ -1183,6 +1848,7 @@ async function handle(act, el, id) {
     // ----- donnes
     case 'new-hand': {
       const g = store.get(id);
+      if (g.type === 'tarot') return openSheet('thand', tarotDraftFrom(null), { game: g });
       return openSheet('hand', handDraftFrom(null), { game: g });
     }
     case 'edit-hand': {
@@ -1192,10 +1858,11 @@ async function handle(act, el, id) {
         if (await ask({ title: 'Supprimer cette donne passée ?', ok: 'Supprimer', danger: true })) { store.remove(id); afterHandChange(g.id, 'Donne supprimée'); }
         return;
       }
+      if (g.type === 'tarot') return openSheet('thand', tarotDraftFrom(h), { game: g });
       return openSheet('hand', handDraftFrom(h), { game: g });
     }
     case 'pass-hand': return savePassedHand();
-    case 'save-hand': return saveHand();
+    case 'save-hand': return sh.kind === 'thand' ? saveTarotHand() : saveHand();
     case 'delete-hand': {
       if (!(await ask({ title: 'Supprimer cette donne ?', ok: 'Supprimer', danger: true }))) return;
       const gid = sh.game.id;
@@ -1238,6 +1905,7 @@ async function handle(act, el, id) {
       return toast('Joueur supprimé');
     }
     default:
+      return handleTarot(act, el, id);
   }
 }
 
@@ -1258,9 +1926,22 @@ document.addEventListener('input', (ev) => {
   const dr = ui.sheet.draft;
   if (el.type === 'checkbox') return; // géré par 'change'
   if (k === 'points') {
+    if (ui.sheet.kind === 'thand') {
+      el.value = el.value.replace(/[^\d.,]/g, '').replace('.', ',').slice(0, 4);
+      dr.points = el.value;
+      return updateTarotFooter();
+    }
     el.value = el.value.replace(/\D/g, '').slice(0, 3);
     dr.points = el.value;
     return updateHandFooter();
+  }
+  if (k === 'nHands') {
+    const n = parseInt(el.value.replace(/\D/g, ''), 10);
+    dr.nHands = n || null;
+    sheetRoot.querySelectorAll('[data-k="nHands"]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === dr.nHands)));
+    const btn = sheetRoot.querySelector('[data-act="tstart"]');
+    if (btn) btn.disabled = !!tarotStartProblem(dr);
+    return;
   }
   if (k === 'target') {
     const n = parseInt(el.value.replace(/\D/g, ''), 10);
@@ -1279,14 +1960,25 @@ document.addEventListener('input', (ev) => {
 
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
-  if (el.dataset.chartStat !== undefined) { ui.chartStat = el.value; return render(); }
+  if (el.dataset.chartStat !== undefined) {
+    if (ui.kind === 'tarot') ui.tchartStat = el.value; else ui.chartStat = el.value;
+    return render();
+  }
+  if (el.dataset.trule) {
+    const k = el.dataset.trule;
+    const v = el.type === 'checkbox' ? el.checked : el.value === 'hands' || el.value === 'free' ? el.value : Number(el.value);
+    const g = store.getState().group;
+    const cur = store.get(g.id) || {};
+    store.put('settings', { ...cur, id: undefined, tarot: { ...(cur.tarot || {}), [k]: v } }, g.id);
+    return toast('Règle enregistrée');
+  }
   // Règles du groupe
   if (el.dataset.rule) {
     const k = el.dataset.rule;
     const v = el.type === 'checkbox' ? el.checked : Number(el.value);
     const g = store.getState().group;
-    const cur = store.get(g.id);
-    store.put('settings', { rules: { ...(cur?.rules || {}), [k]: v } }, g.id);
+    const cur = store.get(g.id) || {};
+    store.put('settings', { ...cur, id: undefined, rules: { ...(cur.rules || {}), [k]: v } }, g.id);
     return toast('Règle enregistrée');
   }
   // Photo de profil
@@ -1345,6 +2037,43 @@ function exportHands() {
     });
   });
   download('fous-contree-donnes.csv', toCsv(header, rows));
+}
+
+function exportTarotStats() {
+  const d = D();
+  const header = ['Joueur', 'Parties', 'Victoires', '% victoires', 'Podiums', '% podiums', 'Place moyenne', 'Score final moyen',
+    'Prises', 'Prises réussies', '% réussite', ...CONTRACT_KEYS.flatMap((c) => [`${CONTRACTS[c].label} tentées`, `${CONTRACTS[c].label} réussies`]),
+    'Gain moyen / prise réussie', 'Bouts moyens', 'Appelé', 'Réussites comme appelé', 'Appelé lui-même',
+    '% chutes en défense', 'Petits au bout réussis', 'Petits pris', 'Poignées', 'Chelems', 'Misères', 'Meilleur partenaire (à 5)'];
+  const rows = d.players.map((p) => {
+    const s = d.tstats.get(p.id);
+    return [p.name, s.games, s.wins, s.winPct, s.podiums, s.podiumPct, s.avgRank, s.avgFinal,
+      s.takes, s.takesMade, s.takePct, ...CONTRACT_KEYS.flatMap((c) => [s.byContract[c]?.takes ?? 0, s.byContract[c]?.made ?? 0]),
+      s.avgGainMade, s.avgBouts, s.called, s.calledMade, s.selfCalls,
+      s.defensePct, s.pabMade, s.pabLost, s.poignees, s.chelems, s.miseres, s.bestPartner ? P(s.bestPartner.id).name : ''];
+  });
+  download('fous-tarot-stats.csv', toCsv(header, rows));
+}
+
+function exportTarotHands() {
+  const d = D();
+  const header = ['Partie', 'Date', 'Donne', 'Joueurs', 'Preneur', 'Contrat', 'Appelé', 'Bouts', 'Points attaque', 'Résultat',
+    'Petit au bout', 'Poignées', 'Chelem', 'Misères', 'Points (par joueur)', 'Totaux'];
+  const rows = [];
+  [...d.tevaluated].reverse().forEach((e, gi) => {
+    e.rows.forEach((r, i) => {
+      const h = r.hand;
+      const names = (o) => e.game.players.map((pid) => `${P(pid).name} ${o[pid]}`).join(' | ');
+      rows.push([gi + 1, dateTime(e.game.startedAt), i + 1, e.game.players.map((x) => P(x).name).join(', '),
+        h.passed ? '' : P(h.taker).name, h.passed ? 'passe' : CONTRACTS[h.contract]?.label, r.partner ? P(r.partner).name : '',
+        h.bouts, h.attackPoints, h.passed ? '' : r.made ? 'réussi' : 'chuté',
+        h.pabBy ? `${P(h.pabBy).name}${h.pabLost ? ' (pris)' : ''}` : '',
+        (h.poignees || []).map((x) => `${P(x.by).name} ${x.type}`).join(', '),
+        h.chelem && h.chelem !== 'none' ? CHELEMS[h.chelem].label : '',
+        (h.miseres || []).map((m) => P(m).name).join(', '), names(r.deltas), names(r.totals)]);
+    });
+  });
+  download('fous-tarot-donnes.csv', toCsv(header, rows));
 }
 
 // ============================================================ DÉMARRAGE

@@ -91,6 +91,8 @@ test('prise partagée : comptée pour les deux partenaires', () => {
   assert.equal(b.sharedPct, 100);
   assert.equal(a.soloPct, 0);
   assert.equal(S.get('c').takes, 0);
+  assert.equal(a.avgBid, 80);                    // l'annonce de 110 reste à b, le preneur
+  assert.equal(b.avgBid, 110);
   const gs = gameStats(g[0], hs);
   assert.deepEqual([gs.a.takes, gs.a.made, gs.a.shared], [2, 1, 1]);
 });

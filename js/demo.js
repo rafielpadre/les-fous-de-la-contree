@@ -1,5 +1,6 @@
 // Données de démonstration (mode local) : 6 joueurs, une douzaine de parties.
 import { gameTotals, DEFAULT_RULES } from './scoring.js';
+import { tarotTotals, OBJECTIVES, DEFAULT_TAROT_RULES } from './tarot.js';
 
 export function buildDemo(uuid) {
   let seed = 7;
@@ -56,6 +57,42 @@ export function buildDemo(uuid) {
     for (const h of hands) add('hand', h);
     t += 3 * 864e5 + Math.floor(rnd() * 864e5);
   }
+  // ---- Tarot : une dizaine de parties à 4 et 5 joueurs (tirage indépendant)
+  let seed2 = 42;
+  const r2 = () => ((seed2 = (seed2 * 48271) % 2147483647) / 2147483647);
+  const pick2 = (arr) => arr[Math.floor(r2() * arr.length)];
+  let t2 = now - 40 * 864e5;
+  for (let gi = 0; gi < 11; gi++) {
+    const n = gi % 3 === 0 ? 5 : 4;
+    const players = [...pids].sort(() => r2() - 0.5).slice(0, n);
+    const running = gi === 10;
+    const rules = { ...DEFAULT_TAROT_RULES, mode: 'hands', nHands: 10 };
+    const gid = uuid();
+    const hands = [];
+    let played = 0;
+    for (let hi = 0; played < (running ? 4 : 10); hi++) {
+      if (r2() < 0.06) { hands.push({ gameId: gid, idx: hi, passed: true, createdAt: t2 + hi * 5 * 60000 }); continue; }
+      played++;
+      const taker = pick2(players);
+      const contract = pick2(['petite', 'petite', 'petite', 'garde', 'garde', 'garde', 'gardeSans', 'gardeContre']);
+      const bouts = pick2([0, 1, 1, 1, 2, 2, 3]);
+      const O = OBJECTIVES[bouts];
+      const made = r2() < sk[taker] + 0.1;
+      let pts = made ? O + Math.floor(r2() * 18) : O - 1 - Math.floor(r2() * 14);
+      if (r2() < 0.3) pts += 0.5;
+      pts = Math.max(0, Math.min(91, pts));
+      const called = n === 5 ? (r2() < 0.12 ? taker : pick2(players.filter((x) => x !== taker))) : null;
+      const h = { gameId: gid, idx: hi, taker, contract, called, bouts, attackPoints: pts, createdAt: t2 + hi * 5 * 60000 };
+      if (r2() < 0.1) { h.pabBy = pick2(players); h.pabLost = r2() < 0.2; }
+      if (r2() < 0.12) h.poignees = [{ by: pick2(players), type: pick2(['simple', 'simple', 'double']) }];
+      hands.push(h);
+    }
+    const res = tarotTotals({ players, rules }, hands);
+    add('game', { type: 'tarot', players, rules, startedAt: t2, finishedAt: res.finished ? t2 + hands.length * 5 * 60000 : null, endedManually: false }, gid);
+    for (const h of hands) add('hand', h);
+    t2 += 3 * 864e5 + Math.floor(r2() * 864e5);
+  }
+
   const groupId = uuid();
   records[groupId] = { id: groupId, kind: 'settings', data: { rules: { target: 1000 } }, deleted: false, ts: now };
   return {

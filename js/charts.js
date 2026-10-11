@@ -67,7 +67,9 @@ function geometry(model) {
     sc = niceScale(lo, Math.max(...all));
   }
   const x = (i) => ML + (n <= 1 ? (MW - ML - MR) / 2 : (i * (MW - ML - MR)) / (n - 1));
-  const y = (v) => MT + (1 - (v - sc.min) / (sc.max - sc.min || 1)) * (MH - MT - MB);
+  // invert : la plus petite valeur en haut (ex. place moyenne, 1ᵉʳ en haut)
+  const frac = (v) => (v - sc.min) / (sc.max - sc.min || 1);
+  const y = (v) => MT + (model.invert ? frac(v) : 1 - frac(v)) * (MH - MT - MB);
   return { n, MR, sc, x, y, labelled };
 }
 
