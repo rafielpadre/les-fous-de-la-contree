@@ -1,0 +1,1288 @@
+// =====================================================================
+//  Les Fous de la Contrée — application (interface)
+// =====================================================================
+import * as store from './store.js';
+import {
+  SUITS, NUMERIC_BIDS, DEFAULT_RULES, scoreHand, gameTotals, bidLabel, explain, teamOf,
+} from './scoring.js';
+import { computeStats, computeDuos, gameStats, handsByGame } from './stats.js';
+import { lineChart } from './charts.js';
+import { fileToAvatar } from './photo.js';
+import { toCsv, download } from './csv.js';
+import { buildDemo } from './demo.js';
+
+const app = document.getElementById('app');
+const sheetRoot = document.getElementById('sheet');
+const overlayRoot = document.getElementById('overlay');
+
+// ------------------------------------------------------------ utilitaires
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pct = (v) => (v == null ? '–' : `${Math.round(v)} %`);
+const num = (v, d = 0) => (v == null ? '–' : v.toLocaleString('fr-FR', { maximumFractionDigits: d }));
+const date = (t) => (t ? new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const dateTime = (t) => (t ? new Date(t).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const TEAM_NAMES = ['Bleus', 'Rouges'];
+const TEAM_PIPS = ['♠', '♥'];
+const AV_COLORS = ['#3a50c2', '#d7263d', '#12936a', '#b07800', '#7b3fc4', '#e0661b', '#0f8fa8', '#c2337a'];
+
+function colorFor(id = '') {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AV_COLORS[h % AV_COLORS.length];
+}
+function initials(name = '?') {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] || '?') + (parts[1]?.[0] || '')).toUpperCase();
+}
+function avatar(p, cls = '') {
+  if (!p) return `<span class="av ${cls}" style="--c:#9aa0b8">?</span>`;
+  const inner = p.photo ? `<img src="${esc(p.photo)}" alt="">` : esc(initials(p.name));
+  return `<span class="av ${cls}" style="--c:${colorFor(p.id)}">${inner}</span>`;
+}
+function suitHtml(s) {
+  const su = SUITS[s];
+  if (!su) return '';
+  return `<span class="suit ${su.red ? 'red' : ''}" title="${su.label}">${su.symbol}</span>`;
+}
+
+// ------------------------------------------------------------ données
+let version = 0;
+let cache = null;
+
+function D() {
+  if (cache && cache.v === version) return cache;
+  const players = store.list('player').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const games = store.list('game');
+  const hands = store.list('hand');
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+  const byGame = handsByGame(hands);
+  const stats = computeStats(players, games, hands);
+  const group = store.getState().group;
+  const settings = group ? store.get(group.id) : null;
+  const rules = { ...DEFAULT_RULES, ...(settings?.rules || {}) };
+  const evaluated = games.map((g) => {
+    const hs = byGame.get(g.id) || [];
+    const res = gameTotals(hs, g.teams, g.rules);
+    return { game: g, hands: hs, ...res };
+  }).sort((a, b) => (b.game.startedAt ?? 0) - (a.game.startedAt ?? 0));
+  cache = { v: version, players, games, hands, byId, byGame, stats, rules, evaluated };
+  return cache;
+}
+const P = (id) => D().byId[id] || { id, name: 'Joueur supprimé' };
+const teamNames = (team) => team.map((id) => esc(P(id).name)).join(' & ');
+
+// ------------------------------------------------------------ état d'interface
+const ui = {
+  sheet: null,          // { kind, draft, ... }
+  gameView: 'game',     // 'game' | 'career' (stats affichées pendant une partie)
+  toast: null,
+  installPrompt: null,
+  joinCode: '',
+};
+
+// ------------------------------------------------------------ routage
+// En démo intégrée (artifact), la navigation se fait en mémoire.
+const EMBED = !!window.CONTREE_ARTIFACT;
+let memHash = '#/';
+const currentHash = () => (EMBED ? memHash : location.hash);
+function go(h) {
+  if (EMBED) { memHash = h || '#/'; render(); window.scrollTo(0, 0); } else location.hash = h;
+}
+if (EMBED) {
+  document.addEventListener('click', (ev) => {
+    const a = ev.target.closest('a[href^="#"]');
+    if (!a) return;
+    ev.preventDefault();
+    go(a.getAttribute('href'));
+  });
+}
+function route() {
+  const h = currentHash().replace(/^#\/?/, '');
+  const [name, id] = h.split('/');
+  return { name: name || 'home', id };
+}
+window.addEventListener('hashchange', () => {
+  if (location.hash.startsWith('#join=')) return handleJoinLink();
+  render();
+  window.scrollTo(0, 0);
+});
+
+// ------------------------------------------------------------ rendu
+function render() {
+  const st = store.getState();
+  if (!st.group) {
+    app.innerHTML = welcomePage();
+    return;
+  }
+  const r = route();
+  let page;
+  switch (r.name) {
+    case 'game': page = gamePage(r.id); break;
+    case 'players': page = playersPage(); break;
+    case 'player': page = playerPage(r.id); break;
+    case 'history': page = historyPage(); break;
+    case 'settings': page = settingsPage(); break;
+    default: page = homePage();
+  }
+  app.innerHTML = page;
+  store.setPolling(r.name === 'game');
+}
+
+function syncBadge() {
+  const st = store.getState();
+  if (st.group?.local) return '<span class="sync off"><i></i>Local</span>';
+  if (!store.cloudConfigured) return '<span class="sync off"><i></i>Local</span>';
+  const pending = st.dirty.length;
+  if (st.lastError) return `<button class="sync err" data-act="sync-now" title="${esc(st.lastError)}"><i></i>${navigator.onLine ? 'Erreur' : 'Hors ligne'}</button>`;
+  if (pending) return `<button class="sync busy" data-act="sync-now"><i></i>${pending} à envoyer</button>`;
+  return '<button class="sync" data-act="sync-now"><i></i>À jour</button>';
+}
+
+function shell(title, body, { back = null, fab = '', active = '' } = {}) {
+  const tab = (href, ic, label, key) =>
+    `<a href="${href}" ${active === key ? 'aria-current="page"' : ''}><span class="ic">${ic}</span>${label}</a>`;
+  return `
+    <header class="topbar felt">
+      ${back ? `<a class="back" href="${back}" aria-label="Retour" style="text-decoration:none">‹</a>` : ''}
+      <h1>${title}</h1>
+      ${syncBadge()}
+    </header>
+    <main>${body}</main>
+    ${fab ? `<div class="fab-wrap">${fab}</div>` : ''}
+    <nav class="tabs" aria-label="Navigation">
+      ${tab('#/', '♠', 'Parties', 'home')}
+      ${tab('#/players', '♥', 'Joueurs', 'players')}
+      ${tab('#/history', '♦', 'Historique', 'history')}
+      ${tab('#/settings', '♣', 'Groupe', 'settings')}
+    </nav>`;
+}
+
+// ============================================================ ACCUEIL (sans groupe)
+function welcomePage() {
+  const cloud = store.cloudConfigured;
+  return `
+  <div class="welcome">
+    <div class="top felt">
+      <p class="logo"><small>Les Fous de</small>la Contrée</p>
+      <div class="suits-line">♠<span class="r">♥</span>♣<span class="r">♦</span></div>
+    </div>
+    <div class="body stack">
+      ${cloud ? `
+      <section class="panel">
+        <h3>Rejoindre un groupe</h3>
+        <p class="small muted">Entrez le code reçu d'un autre joueur pour retrouver les mêmes profils et scores.</p>
+        <input class="input" id="join-code" placeholder="Code à 8 caractères" autocomplete="off" autocapitalize="characters"
+               maxlength="12" value="${esc(ui.joinCode)}" style="text-transform:uppercase;letter-spacing:.12em;font-weight:700">
+        <button class="btn block" style="margin-top:10px" data-act="join-group">Rejoindre</button>
+      </section>
+      <section class="panel">
+        <h3>Créer un groupe</h3>
+        <p class="small muted">Vous recevrez un code d'invitation à partager avec les autres joueurs.</p>
+        <input class="input" id="group-name" placeholder="Nom du groupe (ex. Les jeudis de Marcel)" maxlength="60">
+        <button class="btn gold block" style="margin-top:10px" data-act="create-group">Créer le groupe</button>
+      </section>` : `
+      <section class="panel">
+        <h3>Mode local</h3>
+        <p class="small">Le serveur n'est pas encore configuré (fichier <b>js/config.js</b>). L'application fonctionne,
+        mais les données restent sur ce téléphone uniquement.</p>
+        <input class="input" id="group-name" placeholder="Nom du groupe" maxlength="60" value="Les Fous de la Contrée">
+        <button class="btn gold block" style="margin-top:10px" data-act="create-group">Commencer</button>
+      </section>`}
+      <button class="btn ghost block" data-act="demo">Essayer avec des données de démonstration</button>
+    </div>
+  </div>`;
+}
+
+// ============================================================ PARTIES (accueil)
+function homePage() {
+  const d = D();
+  const running = d.evaluated.filter((e) => e.winner === null);
+  const finished = d.evaluated.filter((e) => e.winner !== null).slice(0, 3);
+  let body = '';
+
+  if (!d.players.length) {
+    body += `
+      <div class="empty panel">
+        <div class="big">♠<span class="r">♥</span>♣<span class="r">♦</span></div>
+        <h2 style="margin-top:14px">Créez les profils des joueurs</h2>
+        <p class="muted">Il faut au moins 4 joueurs pour lancer une partie. Chaque profil garde ses statistiques sur la durée.</p>
+        <button class="btn block" data-act="add-player">Ajouter un joueur</button>
+      </div>`;
+    return shell(esc(store.getState().group.name), body, { active: 'home' });
+  }
+
+  if (running.length) {
+    body += '<h2>En cours</h2>';
+    body += running.map((e) => gameCard(e)).join('');
+  } else {
+    body += `
+      <div class="empty panel">
+        <div class="big">♠<span class="r">♥</span>♣<span class="r">♦</span></div>
+        <h2 style="margin-top:14px">Pas de partie en cours</h2>
+        <p class="muted">${d.players.length < 4 ? `Ajoutez encore ${4 - d.players.length} joueur${d.players.length === 3 ? '' : 's'} pour pouvoir jouer.` : 'Choisissez les équipes et c\'est parti.'}</p>
+      </div>`;
+  }
+
+  // Classement
+  const ranked = rankPlayers().slice(0, 5);
+  if (ranked.length) {
+    body += '<h2>Classement</h2><ul class="list">';
+    body += ranked.map(({ p, s }, i) => `
+      <li><a class="item" href="#/player/${p.id}" style="text-decoration:none;color:inherit">
+        <span class="rank ${i === 0 ? 'g1' : ''}">${i + 1}</span>${avatar(p)}
+        <span class="main"><span class="t">${esc(p.name)}</span><br><span class="s">${s.wins} victoire${s.wins > 1 ? 's' : ''} sur ${s.games} · prises ${s.takesMade}/${s.takes}</span></span>
+        <span class="r">${pct(s.winPct)}</span></a></li>`).join('');
+    body += '</ul>';
+  }
+  if (finished.length) {
+    body += '<h2>Dernières parties</h2>';
+    body += finished.map((e) => gameCard(e)).join('');
+  }
+
+  const fab = d.players.length >= 4
+    ? '<button class="btn gold block" data-act="new-game">Nouvelle partie</button>'
+    : '<button class="btn block" data-act="add-player">Ajouter un joueur</button>';
+  return shell(esc(store.getState().group.name), body, { fab, active: 'home' });
+}
+
+function rankPlayers() {
+  const d = D();
+  return d.players
+    .map((p) => ({ p, s: d.stats.get(p.id) }))
+    .filter((x) => x.s.games > 0)
+    .sort((a, b) => b.s.winPct - a.s.winPct || b.s.games - a.s.games);
+}
+
+function gameCard(e) {
+  const g = e.game;
+  const lead = e.totals[0] === e.totals[1] ? -1 : e.totals[0] > e.totals[1] ? 0 : 1;
+  const status = e.winner !== null
+    ? `Victoire des ${TEAM_NAMES[e.winner]} · ${date(g.finishedAt || g.startedAt)}`
+    : `${e.hands.length} donne${e.hands.length > 1 ? 's' : ''} · objectif ${g.rules.target}`;
+  return `
+    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px">
+      <div class="row">
+        <div class="av-pair">${g.teams[0].map((id) => avatar(P(id), 's')).join('')}</div>
+        <div style="flex:1;min-width:0">
+          <div class="small" style="font-weight:700;color:var(--blue)">${teamNames(g.teams[0])}</div>
+          <div class="small" style="font-weight:700;color:var(--red)">${teamNames(g.teams[1])}</div>
+        </div>
+        <div style="text-align:right;font:900 22px/1.05 var(--display);font-variant-numeric:tabular-nums">
+          <div style="color:var(--blue);${lead === 1 ? 'opacity:.55' : ''}">${e.totals[0]}</div>
+          <div style="color:var(--red);${lead === 0 ? 'opacity:.55' : ''}">${e.totals[1]}</div>
+        </div>
+      </div>
+      <div class="small muted" style="margin-top:8px">${status}</div>
+    </a>`;
+}
+
+// ============================================================ PARTIE
+function gamePage(id) {
+  const d = D();
+  const e = d.evaluated.find((x) => x.game.id === id);
+  if (!e) return shell('Partie', '<p class="muted">Cette partie n\'existe plus.</p>', { back: '#/' });
+  const g = e.game;
+  const target = g.rules.target;
+  const lead = e.totals[0] === e.totals[1] ? -1 : e.totals[0] > e.totals[1] ? 0 : 1;
+  const last = e.rows[e.rows.length - 1];
+
+  const teamCard = (ti) => `
+    <div class="team-card t${ti} ${lead === ti ? 'lead' : ''}">
+      <span class="pip">${TEAM_PIPS[ti]}</span>
+      <div class="av-pair">${g.teams[ti].map((pid) => avatar(P(pid), 's')).join('')}</div>
+      <div class="names">${teamNames(g.teams[ti])}</div>
+      <div class="score">${e.totals[ti]}</div>
+      <div class="delta">${last ? `dernière donne +${last.scores[ti]}` : '&nbsp;'}</div>
+    </div>`;
+
+  let body = `<div class="board">${teamCard(0)}${teamCard(1)}</div>
+    <div class="track" aria-label="Progression vers ${target}">
+      <div class="bar"><span class="b0" style="width:${Math.min(100, (100 * e.totals[0]) / target)}%"></span></div>
+      <div class="bar"><span class="b1" style="width:${Math.min(100, (100 * e.totals[1]) / target)}%"></span></div>
+      <div class="legend"><span>Objectif ${target}</span><span>${e.hands.length} donne${e.hands.length > 1 ? 's' : ''}</span></div>
+    </div>`;
+
+  if (e.winner !== null) {
+    body += `<div class="panel" style="margin-top:14px;text-align:center">
+      <h3 style="color:var(--${e.winner ? 'red' : 'blue'})">Victoire des ${TEAM_NAMES[e.winner]} : ${teamNames(g.teams[e.winner])}</h3>
+      <button class="btn gold block" data-act="rematch" data-id="${g.id}">Revanche avec les mêmes équipes</button>
+    </div>`;
+  }
+
+  // Statistiques des joueurs pendant la partie
+  const gs = gameStats(g, e.hands);
+  const all = [...g.teams[0], ...g.teams[1]];
+  body += `<div class="row" style="margin:22px 0 10px"><h2 style="margin:0;flex:1">Joueurs</h2>
+    <div class="seg" role="group">
+      <button data-act="game-view" data-v="game" aria-pressed="${ui.gameView === 'game'}">Cette partie</button>
+      <button data-act="game-view" data-v="career" aria-pressed="${ui.gameView === 'career'}">Carrière</button>
+    </div></div><div class="mini-stats">`;
+  body += all.map((pid) => {
+    const p = P(pid);
+    const ti = teamOf(g.teams, pid);
+    let what;
+    if (ui.gameView === 'game') {
+      const s = gs[pid];
+      what = `Prises ${s.made}/${s.takes}${s.made ? ` · ${num(s.points / s.made)} pts` : ''}<br>Contres ${s.coinchesWon}/${s.coinches} · Belotes ${s.belotes}`;
+    } else {
+      const s = d.stats.get(pid);
+      what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takeMadePct)} · Contres ${pct(s.coinchePct)}` : '';
+    }
+    return `<a class="mini t${ti}" href="#/player/${pid}" style="text-decoration:none;color:inherit">
+      <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
+  }).join('');
+  body += '</div>';
+
+  // Donnes
+  body += '<h2>Donnes</h2>';
+  if (!e.rows.length) {
+    body += '<p class="muted">Aucune donne pour l\'instant. Touchez « Nouvelle donne » après chaque main.</p>';
+  } else {
+    body += '<ul class="hands panel" style="padding:0 12px">';
+    body += [...e.rows].reverse().map((row, k) => handRow(row, e.rows.length - k)).join('');
+    body += '</ul>';
+  }
+
+  body += `<div style="margin-top:22px" class="row wrap">
+      <span class="small muted" style="flex:1">Commencée le ${dateTime(g.startedAt)}</span>
+      <button class="link" style="color:var(--red)" data-act="delete-game" data-id="${g.id}">Supprimer la partie</button>
+    </div>`;
+
+  const fab = e.winner === null
+    ? `<button class="btn gold block" data-act="new-hand" data-id="${g.id}">Nouvelle donne</button>` : '';
+  return shell('Partie en cours', body, { back: '#/', fab, active: 'home' });
+}
+
+function handRow(row, n) {
+  const h = row.hand;
+  if (h.passed) {
+    return `<li><button class="hand" data-act="edit-hand" data-id="${h.id}"><span class="n">${n}</span>
+      <span class="what"><b>Donne passée</b><div class="sub">Personne n'a pris</div></span><span class="pts muted">0</span></button></li>`;
+  }
+  const taker = P(h.taker);
+  const m = h.surcoincheBy ? '<span class="tag x2">surcontré ×4</span>' : h.coincheBy ? '<span class="tag x2">contré ×2</span>' : '';
+  const res = row.made ? '<span class="tag ok">réussi</span>' : '<span class="tag ko">chuté</span>';
+  const extra = [];
+  if (h.coincheBy) extra.push(`contre de ${esc(P(h.coincheBy).name)}`);
+  if (h.surcoincheBy) extra.push(`surcontre de ${esc(P(h.surcoincheBy).name)}`);
+  if (h.beloteBy && h.suit !== 'SA') extra.push(`belote ${esc(P(h.beloteBy).name)}`);
+  if (h.capot) extra.push('capot');
+  else if (!['capot', 'generale'].includes(h.bid) || h.attackPoints != null) extra.push(`${h.attackPoints ?? 0} pts faits`);
+  return `<li><button class="hand" data-act="edit-hand" data-id="${h.id}">
+    <span class="n">${n}</span>
+    <span class="what"><b>${esc(taker.name)}</b> · ${bidLabel(h.bid)} ${suitHtml(h.suit)} ${res}${m}
+      <div class="sub">${extra.join(' · ')}</div></span>
+    <span class="pts"><span class="p0">+${row.scores[0]}</span><br><span class="p1">+${row.scores[1]}</span></span>
+  </button></li>`;
+}
+
+// ============================================================ JOUEURS
+function playersPage() {
+  const d = D();
+  let body = '';
+  if (!d.players.length) {
+    body = '<p class="muted">Aucun joueur pour l\'instant.</p>';
+  } else {
+    body += '<ul class="list">';
+    const order = [...d.players].sort((a, b) => {
+      const sa = d.stats.get(a.id), sb = d.stats.get(b.id);
+      return (sb.games > 0) - (sa.games > 0) || (sb.winPct ?? 0) - (sa.winPct ?? 0) || a.name.localeCompare(b.name, 'fr');
+    });
+    body += order.map((p) => {
+      const s = d.stats.get(p.id);
+      return `<li><a class="item" href="#/player/${p.id}" style="text-decoration:none;color:inherit">${avatar(p)}
+        <span class="main"><span class="t">${esc(p.name)}</span><br>
+        <span class="s">${s.games} partie${s.games > 1 ? 's' : ''} · prises ${s.takesMade}/${s.takes} · contres ${s.coinchesWon}/${s.coinches}</span></span>
+        <span class="r">${pct(s.winPct)}<small>victoires</small></span></a></li>`;
+    }).join('');
+    body += '</ul>';
+
+    const duos = computeDuos(d.games, d.hands)
+      .filter((x) => x.games >= 1)
+      .sort((a, b) => b.winPct - a.winPct || b.games - a.games)
+      .slice(0, 6);
+    if (duos.length) {
+      body += '<h2>Meilleurs duos</h2><ul class="list">';
+      body += duos.map((x) => `<li><div class="item">
+          <div class="av-pair">${x.ids.map((id) => avatar(P(id), 's')).join('')}</div>
+          <span class="main"><span class="t">${x.ids.map((id) => esc(P(id).name)).join(' & ')}</span><br>
+          <span class="s">${x.wins} victoire${x.wins > 1 ? 's' : ''} sur ${x.games} partie${x.games > 1 ? 's' : ''}</span></span>
+          <span class="r">${pct(x.winPct)}</span></div></li>`).join('');
+      body += '</ul>';
+    }
+  }
+  const fab = '<button class="btn block" data-act="add-player">Ajouter un joueur</button>';
+  return shell('Joueurs', body, { fab, active: 'players' });
+}
+
+function playerPage(id) {
+  const d = D();
+  const p = d.byId[id];
+  if (!p) return shell('Joueur', '<p class="muted">Ce joueur n\'existe plus.</p>', { back: '#/players' });
+  const s = d.stats.get(id);
+  const fav = s.favSuit ? `${suitHtml(s.favSuit)} ${SUITS[s.favSuit].label}` : '–';
+  const streak = s.streak > 0 ? `${s.streak} victoire${s.streak > 1 ? 's' : ''}` : s.streak < 0 ? `${-s.streak} défaite${s.streak < -1 ? 's' : ''}` : '–';
+
+  let body = `
+    <div class="hero felt">
+      ${avatar(p, 'l')}
+      <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
+        <p>${s.games} partie${s.games > 1 ? 's' : ''} · ${s.handsPlayed} donnes jouées</p>
+        <button class="btn light" style="margin-top:10px;min-height:38px;padding:8px 14px" data-act="edit-player" data-id="${p.id}">Modifier le profil</button>
+      </div>
+    </div>
+
+    <h2>Parties</h2>
+    <div class="kpis">
+      <div class="kpi blue"><div class="v">${pct(s.winPct)}</div><div class="l">de victoires</div></div>
+      <div class="kpi red"><div class="v">${pct(s.lossPct)}</div><div class="l">de défaites</div></div>
+      <div class="kpi"><div class="v">${s.wins}/${s.games}</div><div class="l">parties gagnées</div></div>
+    </div>
+    <div class="panel" style="margin-top:10px"><dl class="dl">
+      <dt>Série en cours</dt><dd>${streak}</dd>
+      <dt>Meilleure série de victoires</dt><dd>${s.bestStreak || '–'}</dd>
+    </dl></div>
+
+    <h2>Prises</h2>
+    <div class="kpis">
+      <div class="kpi green"><div class="v">${s.takesMade}/${s.takes}</div><div class="l">prises réussies</div></div>
+      <div class="kpi green"><div class="v">${pct(s.takeMadePct)}</div><div class="l">de réussite</div></div>
+      <div class="kpi red"><div class="v">${pct(s.takeFailPct)}</div><div class="l">de chutes</div></div>
+    </div>
+    <div class="panel" style="margin-top:10px">
+      ${s.takes ? `<div class="meter" aria-hidden="true"><span style="width:${s.takeMadePct}%"></span></div>` : ''}
+      <dl class="dl">
+        <dt>Points moyens par contrat réussi</dt><dd>${num(s.avgPointsMade)}</dd>
+        <dt>Annonce moyenne</dt><dd>${num(s.avgBid)}</dd>
+        <dt>Couleur préférée</dt><dd>${fav}</dd>
+        <dt>Capots réalisés (annoncés)</dt><dd>${s.capots} (${s.capotsAnnounced})</dd>
+        <dt>Générales réussies</dt><dd>${s.generales}</dd>
+        <dt>Belotes</dt><dd>${s.belotes}</dd>
+      </dl>
+    </div>
+
+    <h2>Contres et défense</h2>
+    <div class="kpis">
+      <div class="kpi gold"><div class="v">${s.coinchesWon}/${s.coinches}</div><div class="l">contres réussis</div></div>
+      <div class="kpi gold"><div class="v">${s.surcoinchesWon}/${s.surcoinches}</div><div class="l">surcontres réussis</div></div>
+      <div class="kpi blue"><div class="v">${pct(s.defensePct)}</div><div class="l">chutes infligées en défense</div></div>
+    </div>`;
+
+  // Duos
+  const partnerRows = Object.entries(s.partners).sort((a, b) => b[1].games - a[1].games);
+  body += '<h2>Partenaires et adversaires</h2><div class="panel"><dl class="dl">';
+  body += `<dt>Meilleur partenaire</dt><dd>${s.bestPartner ? `${esc(P(s.bestPartner.id).name)} (${pct(s.bestPartner.winPct)})` : '–'}</dd>`;
+  body += `<dt>Adversaire le plus redouté</dt><dd>${s.nemesis ? `${esc(P(s.nemesis.id).name)} (${pct(s.nemesis.winPct)})` : '–'}</dd>`;
+  body += '</dl>';
+  if (!s.bestPartner && s.games) body += '<p class="small muted" style="margin:8px 0 0">Il faut au moins 2 parties avec le même partenaire ou adversaire.</p>';
+  body += '</div>';
+  if (partnerRows.length) {
+    body += '<ul class="list" style="margin-top:10px">';
+    body += partnerRows.map(([pid, v]) => `<li><div class="item">${avatar(P(pid), 's')}
+      <span class="main"><span class="t">avec ${esc(P(pid).name)}</span><br><span class="s">${v.wins} victoire${v.wins > 1 ? 's' : ''} sur ${v.games}</span></span>
+      <span class="r">${pct((100 * v.wins) / v.games)}</span></div></li>`).join('');
+    body += '</ul>';
+  }
+
+  // Évolution
+  body += '<h2>Évolution</h2><div class="panel">';
+  body += lineChart([
+    { name: '% de victoires', color: '#3a50c2', values: s.timeline.map((t) => t.winPct) },
+    { name: '% de prises réussies', color: '#12936a', values: s.timeline.map((t) => t.takePct) },
+  ], { labels: s.timeline.map((_, i) => i + 1) });
+  body += '<p class="small muted" style="margin:6px 0 0">Valeurs cumulées après chaque partie terminée.</p></div>';
+
+  // Historique
+  const mine = d.evaluated.filter((e) => e.winner !== null && (e.game.teams[0].includes(id) || e.game.teams[1].includes(id))).slice(0, 10);
+  if (mine.length) {
+    body += '<h2>Dernières parties</h2><ul class="list">';
+    body += mine.map((e) => {
+      const ti = teamOf(e.game.teams, id);
+      const won = e.winner === ti;
+      const partner = e.game.teams[ti].find((x) => x !== id);
+      return `<li><a class="item" href="#/game/${e.game.id}" style="text-decoration:none;color:inherit">
+        <span class="tag ${won ? 'ok' : 'ko'}" style="margin:0">${won ? 'Gagnée' : 'Perdue'}</span>
+        <span class="main"><span class="t">avec ${esc(P(partner).name)}</span><br><span class="s">contre ${teamNames(e.game.teams[1 - ti])} · ${date(e.game.finishedAt)}</span></span>
+        <span class="r" style="font-size:17px">${e.totals[ti]}<small>à ${e.totals[1 - ti]}</small></span></a></li>`;
+    }).join('');
+    body += '</ul>';
+  }
+  return shell('Profil', body, { back: '#/players', active: 'players' });
+}
+
+// ============================================================ HISTORIQUE
+function historyPage() {
+  const d = D();
+  let body = '';
+  if (!d.evaluated.length) body = '<p class="muted">Aucune partie jouée pour l\'instant.</p>';
+  else {
+    let month = '';
+    for (const e of d.evaluated) {
+      const m = new Date(e.game.startedAt).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      if (m !== month) { body += `<h2>${m.charAt(0).toUpperCase() + m.slice(1)}</h2>`; month = m; }
+      body += gameCard(e);
+    }
+  }
+  return shell('Historique', body, { active: 'history' });
+}
+
+// ============================================================ GROUPE / RÉGLAGES
+function settingsPage() {
+  const st = store.getState();
+  const g = st.group;
+  const d = D();
+  const r = d.rules;
+  const local = g.local || !store.cloudConfigured;
+  let body = `<h2>${esc(g.name)}</h2>`;
+  if (local) {
+    body += `<div class="notice">Mode local : les données sont enregistrées sur ce téléphone uniquement.
+      Pour les partager entre plusieurs téléphones, configurez le serveur (voir le guide d'installation).</div>`;
+  } else {
+    body += `<div class="panel">
+      <h3>Code d'invitation</h3>
+      <div class="code">${esc(g.code)}</div>
+      <p class="small muted" style="margin:10px 0">Les autres joueurs installent l'app puis choisissent « Rejoindre un groupe » avec ce code.
+      Toute personne qui a le code peut lire et modifier les scores du groupe.</p>
+      <div class="row"><button class="btn block" data-act="share-code">Inviter</button><button class="btn light block" data-act="copy-code">Copier</button></div>
+    </div>
+    <div class="panel" style="margin-top:12px"><dl class="dl">
+      <dt>Dernière synchronisation</dt><dd>${st.lastSync ? dateTime(st.lastSync) : 'jamais'}</dd>
+      <dt>Modifications à envoyer</dt><dd>${st.dirty.length}</dd>
+      ${st.lastError ? `<dt>Problème</dt><dd style="color:var(--red)">${esc(st.lastError)}</dd>` : ''}
+    </dl><button class="btn light block" style="margin-top:10px" data-act="sync-now">Synchroniser maintenant</button></div>`;
+  }
+
+  body += installBlock();
+
+  const tg = (k, label, hint = '') => `<label class="toggle"><input type="checkbox" data-rule="${k}" ${r[k] ? 'checked' : ''}>
+      <span>${label}${hint ? `<br><span class="small muted">${hint}</span>` : ''}</span></label>`;
+  body += `<h2>Règles du groupe</h2>
+    <div class="panel">
+      <div class="field" style="margin-top:0"><label for="rule-target">Score à atteindre par défaut</label>
+        <select class="input" id="rule-target" data-rule="target">
+          ${[500, 1000, 1500, 2000, 2500, 3000].map((v) => `<option value="${v}" ${r.target === v ? 'selected' : ''}>${v}</option>`).join('')}
+        </select></div>
+      <div style="margin-top:8px">
+      ${tg('allowSA', 'Sans atout autorisé')}
+      ${tg('allowTA', 'Tout atout autorisé')}
+      ${tg('rounding', 'Arrondir à la dizaine', 'Le 5 profite à l\'attaque : 85 → 90, la défense prend 160 − 90 = 70.')}
+      ${tg('beloteLostOnFail', 'Belote perdue si l\'attaque chute')}
+      ${tg('capotUnannounced250', 'Capot non annoncé = 250 points', 'Sinon il vaut 160 comme une donne normale.')}
+      </div>
+      <div class="field"><label for="rule-fail">En cas de chute, la défense marque</label>
+        <select class="input" id="rule-fail" data-rule="failBase">
+          <option value="160" ${r.failBase === 160 ? 'selected' : ''}>160 + l'annonce</option>
+          <option value="162" ${r.failBase === 162 ? 'selected' : ''}>162 + l'annonce</option>
+          <option value="0" ${r.failBase === 0 ? 'selected' : ''}>l'annonce seule</option>
+        </select></div>
+      <p class="small muted" style="margin:12px 0 0">Ces règles s'appliquent aux nouvelles parties. Une partie déjà commencée garde les règles de son lancement.</p>
+    </div>
+
+    <h2>Comment les points sont comptés</h2>
+    <div class="panel formula">
+      <p><code>A</code> = annonce (80 à 160, capot = 250, générale = 500), <code>m</code> = 1, ou 2 si contré, ou 4 si surcontré,
+      <code>p</code> = points de cartes faits par l'attaque (sur 162), <code>b</code> = 20 de belote.</p>
+      <p>Le contrat est <b>réussi</b> si <code>p + b(attaque) ≥ A</code>.</p>
+      <p>Réussi : attaque = <code>m × A + p arrondi + b</code>, défense = <code>160 − p arrondi + b</code>.</p>
+      <p>Chuté : attaque = 0, défense = <code>${r.failBase ? `${r.failBase} + ` : ''}m × A + b</code>.</p>
+      <p class="muted">Exemple : 100 ♥, l'attaque fait 96 avec la belote → 96 + 20 = 116 ≥ 100, réussi.
+      Attaque : 100 + 100 + 20 = 220 ; défense : 60. Si c'était contré : 200 + 100 + 20 = 320.</p>
+    </div>
+
+    ${EMBED ? '' : `<h2>Exporter</h2>
+    <div class="row"><button class="btn light block" data-act="export-stats">Stats (CSV)</button>
+      <button class="btn light block" data-act="export-hands">Donnes (CSV)</button></div>`}
+
+    <h2>Ce téléphone</h2>
+    <button class="btn danger block" data-act="leave-group">${local ? 'Effacer les données locales' : 'Quitter le groupe sur ce téléphone'}</button>
+    <p class="small muted" style="margin-top:8px">${local ? 'Toutes les parties et profils de ce téléphone seront supprimés.' : 'Les données restent sur le serveur : vous pourrez revenir avec le code.'}</p>`;
+  return shell('Groupe', body, { active: 'settings' });
+}
+
+function installBlock() {
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (standalone) return '';
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (ui.installPrompt) {
+    return `<div class="panel" style="margin-top:12px"><h3>Installer l'application</h3>
+      <p class="small muted">Ajoute une icône sur l'écran d'accueil, comme une vraie app.</p>
+      <button class="btn gold block" data-act="install">Installer</button></div>`;
+  }
+  return `<div class="panel" style="margin-top:12px"><h3>Installer l'application</h3>
+    <p class="small muted" style="margin:0">${ios
+      ? 'Dans Safari : bouton Partager, puis « Sur l\'écran d\'accueil ».'
+      : 'Dans Chrome : menu ⋮, puis « Installer l\'application » ou « Ajouter à l\'écran d\'accueil ».'}</p></div>`;
+}
+
+// ============================================================ FEUILLES (saisie)
+function openSheet(kind, draft = {}, extra = {}) {
+  ui.sheet = { kind, draft, ...extra };
+  document.getElementById('toast').innerHTML = '';
+  renderSheet(true);
+}
+function closeSheet() {
+  ui.sheet = null;
+  sheetRoot.innerHTML = '';
+  document.body.style.overflow = '';
+}
+function renderSheet(opening = false) {
+  if (!ui.sheet) return closeSheet();
+  const prevScroll = sheetRoot.querySelector('.sheet-body')?.scrollTop ?? 0;
+  const { kind } = ui.sheet;
+  const html = kind === 'hand' ? handSheet() : kind === 'newGame' ? newGameSheet() : kind === 'player' ? playerSheet() : '';
+  sheetRoot.innerHTML = `<div class="scrim ${opening ? 'in' : ''}" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  document.body.style.overflow = 'hidden';
+  const body = sheetRoot.querySelector('.sheet-body');
+  if (body) body.scrollTop = prevScroll;
+}
+const sheetHead = (title, right = '') => `<div class="sheet-head"><h2>${title}</h2>${right}<button class="x" data-act="sheet-close" aria-label="Fermer">✕</button></div>`;
+
+// ---------- Saisie d'une donne
+function handDraftFrom(h) {
+  return {
+    id: h?.id, taker: h?.taker ?? null, bid: h?.bid ?? null, suit: h?.suit ?? null,
+    coincheBy: h?.coincheBy ?? null, surcoincheBy: h?.surcoincheBy ?? null,
+    beloteBy: h?.beloteBy ?? null, capot: !!h?.capot,
+    mode: 'attack', points: h?.attackPoints != null && !h?.capot ? String(h.attackPoints) : '',
+  };
+}
+
+function draftToHand(dr) {
+  const pts = dr.points === '' ? null : Number(dr.points);
+  const attackPoints = pts == null ? null : dr.mode === 'attack' ? pts : 162 - pts;
+  return {
+    taker: dr.taker, bid: dr.bid, suit: dr.suit,
+    coincheBy: dr.coincheBy, surcoincheBy: dr.coincheBy ? dr.surcoincheBy : null,
+    beloteBy: dr.suit === 'SA' ? null : dr.beloteBy,
+    capot: dr.capot, attackPoints: dr.capot ? 162 : attackPoints,
+  };
+}
+
+function handValidity(dr) {
+  if (!dr.taker) return 'Choisissez le preneur';
+  if (!dr.bid) return 'Choisissez l\'annonce';
+  if (!dr.suit) return 'Choisissez la couleur';
+  const special = dr.bid === 'capot' || dr.bid === 'generale';
+  if (!dr.capot && !special) {
+    if (dr.points === '') return 'Indiquez les points faits';
+    const n = Number(dr.points);
+    if (!Number.isInteger(n) || n < 0 || n > 162) return 'Les points vont de 0 à 162';
+  }
+  return null;
+}
+
+function handSheet() {
+  const { draft: dr, game } = ui.sheet;
+  const teams = game.teams;
+  const rules = game.rules;
+  const players = [...teams[0], ...teams[1]];
+  const att = teamOf(teams, dr.taker);
+  const pbtn = (k, pid, extraCls = '') => {
+    const ti = teamOf(teams, pid);
+    return `<button class="choice t${ti} ${extraCls}" data-act="set" data-k="${k}" data-v="${pid}" aria-pressed="${dr[k] === pid}">
+      ${avatar(P(pid), 's')}<span class="nm">${esc(P(pid).name)}</span></button>`;
+  };
+
+  let html = sheetHead(dr.id ? 'Modifier la donne' : 'Nouvelle donne',
+    dr.id ? '' : '<button class="link" data-act="pass-hand" style="margin-right:6px">Tous passent</button>');
+  html += '<div class="sheet-body">';
+
+  // Preneur
+  html += `<div class="field" style="margin-top:4px"><span class="lab">Preneur</span><div class="choices c4">${players.map((pid) => pbtn('taker', pid)).join('')}</div></div>`;
+
+  // Annonce
+  html += `<div class="field"><span class="lab">Annonce</span><div class="choices c4">
+    ${NUMERIC_BIDS.map((b) => `<button class="choice big" data-act="set" data-k="bid" data-v="${b}" aria-pressed="${dr.bid === b}">${b}</button>`).join('')}
+    <button class="choice big special" data-act="set" data-k="bid" data-v="capot" aria-pressed="${dr.bid === 'capot'}" style="font-size:18px">Capot<small>250</small></button>
+    <button class="choice big special" data-act="set" data-k="bid" data-v="generale" aria-pressed="${dr.bid === 'generale'}" style="font-size:16px">Générale<small>500</small></button>
+  </div></div>`;
+
+  // Couleur
+  const suits = ['S', 'H', 'D', 'C', ...(rules.allowSA ? ['SA'] : []), ...(rules.allowTA ? ['TA'] : [])];
+  html += `<div class="field"><span class="lab">Couleur</span><div class="choices ${suits.length > 4 ? 'c3' : 'c4'}">
+    ${suits.map((s) => `<button class="choice big ${SUITS[s].red ? 'red' : ''}" data-act="set" data-k="suit" data-v="${s}" aria-pressed="${dr.suit === s}">
+      ${SUITS[s].symbol}<small>${SUITS[s].label}</small></button>`).join('')}
+  </div></div>`;
+
+  // Contre / surcontre
+  html += '<div class="field"><span class="lab">Contre</span>';
+  if (att < 0) {
+    html += '<p class="small muted">Choisissez d\'abord le preneur.</p>';
+  } else {
+    html += `<div class="choices c3">
+      <button class="choice" data-act="set" data-k="coincheBy" data-v="" aria-pressed="${!dr.coincheBy}">Pas de contre</button>
+      ${teams[1 - att].map((pid) => pbtn('coincheBy', pid)).join('')}
+    </div>`;
+    if (dr.coincheBy) {
+      html += `<span class="lab" style="margin-top:12px">Surcontre</span><div class="choices c3">
+        <button class="choice" data-act="set" data-k="surcoincheBy" data-v="" aria-pressed="${!dr.surcoincheBy}">Pas de surcontre</button>
+        ${teams[att].map((pid) => pbtn('surcoincheBy', pid)).join('')}
+      </div>`;
+    }
+  }
+  html += '</div>';
+
+  // Points
+  const special = dr.bid === 'capot' || dr.bid === 'generale';
+  html += `<div class="field"><span class="lab">Plis</span>
+    <label class="toggle"><input type="checkbox" data-draft="capot" ${dr.capot ? 'checked' : ''}>
+      <span>L'attaque a fait tous les plis (capot${dr.bid === 'generale' ? ' — générale réussie' : ''})</span></label>`;
+  if (!dr.capot) {
+    html += `<div class="row" style="margin:6px 0 8px"><span class="small" style="flex:1">Points comptés par ${special ? '<span class="muted">(facultatif)</span>' : ''}</span>
+      <div class="seg"><button data-act="set" data-k="mode" data-v="attack" aria-pressed="${dr.mode === 'attack'}">l'attaque</button>
+      <button data-act="set" data-k="mode" data-v="defense" aria-pressed="${dr.mode === 'defense'}">la défense</button></div></div>
+      <div class="points">
+        <button data-act="bump" data-v="-10" aria-label="Moins 10">−10</button>
+        <input class="input" id="pts" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="0" value="${esc(dr.points)}" data-draft="points"
+          aria-label="Points de cartes faits par ${dr.mode === 'attack' ? 'l\'attaque' : 'la défense'}">
+        <button data-act="bump" data-v="10" aria-label="Plus 10">+10</button>
+      </div>
+      <p class="small muted" style="margin:6px 0 0">Points de cartes sur 162, dix de der compris, sans la belote.</p>`;
+  }
+  html += '</div>';
+
+  // Belote
+  if (dr.suit !== 'SA') {
+    html += `<div class="field"><span class="lab">Belote-rebelote</span><div class="choices c5">
+      <button class="choice" data-act="set" data-k="beloteBy" data-v="" aria-pressed="${!dr.beloteBy}">Personne</button>
+      ${players.map((pid) => pbtn('beloteBy', pid)).join('')}</div></div>`;
+  }
+
+  if (dr.id) {
+    html += `<button class="btn danger block" style="margin-top:22px" data-act="delete-hand">Supprimer cette donne</button>`;
+  }
+  html += '</div>';
+  html += `<div class="sheet-foot"><div id="preview">${previewHtml()}</div>
+    <button class="btn gold block" data-act="save-hand" ${handValidity(dr) ? 'disabled' : ''} id="save-hand">Enregistrer la donne</button></div>`;
+  return html;
+}
+
+function previewHtml() {
+  const { draft: dr, game } = ui.sheet;
+  const why = handValidity(dr);
+  if (why) return `<div class="preview">${why}</div>`;
+  const res = scoreHand(draftToHand(dr), game.teams, game.rules);
+  return `<div class="preview ${res.made ? 'ok' : 'ko'}">
+    <div class="big">${res.made ? 'Contrat réussi' : 'Contrat chuté'} :
+      <span class="p0">Bleus +${res.scores[0]}</span> · <span class="p1">Rouges +${res.scores[1]}</span></div>
+    <div class="small">${explain(res)}</div></div>`;
+}
+
+function updateHandFooter() {
+  const pv = document.getElementById('preview');
+  if (pv) pv.innerHTML = previewHtml();
+  const btn = document.getElementById('save-hand');
+  if (btn) btn.disabled = !!handValidity(ui.sheet.draft);
+}
+
+function saveHand() {
+  const { draft: dr, game } = ui.sheet;
+  if (handValidity(dr)) return;
+  const d = D();
+  const hs = d.byGame.get(game.id) || [];
+  const base = draftToHand(dr);
+  if (dr.id) {
+    const prev = store.get(dr.id);
+    store.put('hand', { ...prev, ...base, passed: false }, dr.id);
+    closeSheet();
+    afterHandChange(game.id, 'Donne modifiée');
+  } else {
+    const idx = hs.reduce((m, h) => Math.max(m, h.idx ?? 0), -1) + 1;
+    const id = store.put('hand', { ...base, gameId: game.id, idx, createdAt: Date.now() });
+    closeSheet();
+    afterHandChange(game.id, 'Donne enregistrée', id);
+  }
+}
+
+function savePassedHand() {
+  const { game } = ui.sheet;
+  const hs = D().byGame.get(game.id) || [];
+  const idx = hs.reduce((m, h) => Math.max(m, h.idx ?? 0), -1) + 1;
+  const id = store.put('hand', { gameId: game.id, idx, passed: true, createdAt: Date.now() });
+  closeSheet();
+  afterHandChange(game.id, 'Donne passée', id);
+}
+
+/** Met à jour la fin de partie après ajout/modification/suppression d'une donne. */
+function afterHandChange(gameId, message, undoId = null) {
+  const g = store.get(gameId);
+  if (!g) return;
+  const hs = (handsByGame(store.list('hand')).get(gameId)) || [];
+  const res = gameTotals(hs, g.teams, g.rules);
+  if (res.winner !== null && g.winner !== res.winner) {
+    store.patch(gameId, { winner: res.winner, finishedAt: g.finishedAt || Date.now() });
+    showWin(g, res);
+  } else if (res.winner === null && g.winner != null) {
+    store.patch(gameId, { winner: null, finishedAt: null });
+  }
+  toast(message, undoId ? { label: 'Annuler', act: 'undo-hand', id: undoId } : null);
+}
+
+// ---------- Nouvelle partie
+function newGameSheet() {
+  const dr = ui.sheet.draft;
+  const d = D();
+  const slot = (i) => {
+    const pid = dr.slots[i];
+    return `<button class="slot ${pid ? 'filled' : ''}" data-act="slot" data-v="${i}">
+      ${pid ? `${avatar(P(pid), 's')}<span>${esc(P(pid).name)}</span>` : '<span class="muted">Choisir…</span>'}</button>`;
+  };
+  const full = dr.slots.every(Boolean);
+  let html = sheetHead('Nouvelle partie');
+  html += `<div class="sheet-body">
+    <p class="small muted" style="margin:0 0 10px">Touchez les joueurs dans l'ordre : les deux premiers forment les Bleus, les deux suivants les Rouges.</p>
+    <div class="slots">
+      <div class="slot-team t0"><h3>Bleus ♠</h3>${slot(0)}${slot(1)}</div>
+      <div class="slot-team t1"><h3>Rouges ♥</h3>${slot(2)}${slot(3)}</div>
+    </div>
+    <div class="row" style="margin-top:10px"><button class="btn light" data-act="shuffle" ${full ? '' : 'disabled'} style="flex:1">Tirer les équipes au sort</button></div>
+    <div class="field"><span class="lab">Joueurs</span><div class="pick">
+      ${d.players.map((p) => `<button data-act="pick" data-v="${p.id}" aria-pressed="${dr.slots.includes(p.id)}">${avatar(p, 's')}${esc(p.name)}</button>`).join('')}
+      <button data-act="add-player-inline" style="padding:8px 14px">+ Nouveau joueur</button>
+    </div></div>
+    <div class="field"><span class="lab">Score à atteindre</span><div class="choices c4">
+      ${[1000, 1500, 2000, 3000].map((v) => `<button class="choice" data-act="set" data-k="target" data-v="${v}" aria-pressed="${dr.target === v}">${v}</button>`).join('')}
+    </div>
+    <input class="input" style="margin-top:8px" inputmode="numeric" data-draft="target" placeholder="Autre score" value="${[1000, 1500, 2000, 3000].includes(dr.target) ? '' : dr.target}"></div>
+    <div class="field"><span class="lab">Options</span>
+      <label class="toggle"><input type="checkbox" data-draft="allowSA" ${dr.allowSA ? 'checked' : ''}><span>Sans atout autorisé</span></label>
+      <label class="toggle"><input type="checkbox" data-draft="allowTA" ${dr.allowTA ? 'checked' : ''}><span>Tout atout autorisé</span></label>
+      <p class="small muted" style="margin:4px 0 0">Les autres règles se règlent dans l'onglet Groupe.</p>
+    </div>
+  </div>
+  <div class="sheet-foot"><button class="btn gold block" data-act="start-game" ${full && dr.target >= 100 ? '' : 'disabled'}>Lancer la partie</button></div>`;
+  return html;
+}
+
+function startGame(teams, rules) {
+  const id = store.put('game', { teams, rules, startedAt: Date.now(), finishedAt: null, winner: null });
+  closeSheet();
+  go(`#/game/${id}`);
+}
+
+// ---------- Profil joueur (création / modification)
+function playerSheet() {
+  const dr = ui.sheet.draft;
+  const d = D();
+  const used = dr.id && d.games.some((g) => g.teams.flat().includes(dr.id));
+  return `${sheetHead(dr.id ? 'Modifier le profil' : 'Nouveau joueur')}
+  <div class="sheet-body">
+    <div class="row" style="margin-top:6px">
+      ${avatar({ id: dr.id || dr.name, name: dr.name || '?', photo: dr.photo }, 'l')}
+      <div style="flex:1">
+        <label class="btn light" style="width:100%;margin-bottom:8px">${dr.photo ? 'Changer la photo' : 'Ajouter une photo'}
+          <input type="file" accept="image/*" data-photo class="sr"></label>
+        ${dr.photo ? '<button class="link" data-act="photo-remove">Retirer la photo</button>' : '<p class="small muted" style="margin:0">Facultatif</p>'}
+      </div>
+    </div>
+    <div class="field"><label for="pname">Prénom ou surnom</label>
+      <input class="input" id="pname" data-draft="name" maxlength="30" value="${esc(dr.name || '')}" autocomplete="off"></div>
+    ${dr.id ? (used
+      ? '<p class="small muted" style="margin-top:18px">Ce joueur a déjà joué des parties : il ne peut pas être supprimé (ses statistiques en dépendent).</p>'
+      : '<button class="btn danger block" style="margin-top:22px" data-act="delete-player">Supprimer ce joueur</button>') : ''}
+  </div>
+  <div class="sheet-foot"><button class="btn gold block" data-act="save-player" ${(dr.name || '').trim() ? '' : 'disabled'} id="save-player">Enregistrer</button></div>`;
+}
+
+// ------------------------------------------------------------ boîte de dialogue
+/** Remplace confirm()/prompt() (bloqués dans certains contextes, et plus lisibles). */
+function ask({ title, message = '', ok = 'Confirmer', danger = false, input = null }) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('dialog');
+    root.innerHTML = `<div class="scrim in dlg-scrim"><div class="dialog" role="alertdialog" aria-modal="true" aria-label="${esc(title)}">
+      <h3>${esc(title)}</h3>${message ? `<p class="small muted">${esc(message)}</p>` : ''}
+      ${input ? `<input class="input" id="dlg-input" placeholder="${esc(input)}" maxlength="30" autocomplete="off">` : ''}
+      <div class="row" style="margin-top:14px"><button class="btn light block" data-dlg="0">Annuler</button>
+      <button class="btn ${danger ? 'red' : 'gold'} block" data-dlg="1">${esc(ok)}</button></div></div></div>`;
+    const inp = root.querySelector('#dlg-input');
+    inp?.focus();
+    const done = (v) => { root.innerHTML = ''; resolve(v); };
+    root.querySelector('[data-dlg="0"]').onclick = () => done(input ? null : false);
+    root.querySelector('[data-dlg="1"]').onclick = () => done(input ? inp.value.trim() : true);
+    inp?.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(inp.value.trim()); });
+  });
+}
+
+// ============================================================ VICTOIRE / TOAST
+function showWin(game, res) {
+  const w = res.winner;
+  const pieces = Array.from({ length: 28 }, (_, i) => {
+    const s = ['♠', '♥', '♦', '♣'][i % 4];
+    const red = s === '♥' || s === '♦';
+    return `<i style="left:${Math.random() * 100}%;color:${red ? '#ef4a5e' : '#fff'};animation-duration:${2.4 + Math.random() * 2.5}s;animation-delay:${Math.random() * 1.2}s;--rot:${Math.random() * 720 - 360}deg">${s}</i>`;
+  }).join('');
+  overlayRoot.innerHTML = `<div class="win felt" style="${w ? 'background-color:var(--red)' : ''}" role="dialog" aria-modal="true">
+    <div class="rain">${pieces}</div>
+    <div class="box">
+      <div class="av-pair" style="justify-content:center">${game.teams[w].map((pid) => avatar(P(pid), 'l')).join('')}</div>
+      <p class="trophy">Victoire des ${TEAM_NAMES[w]} !</p>
+      <p style="font-weight:700;font-size:18px">${teamNames(game.teams[w])}</p>
+      <p class="final">${res.totals[w]} <span>à ${res.totals[1 - w]}</span></p>
+      <button class="btn gold block" data-act="close-win">Voir la partie</button>
+    </div></div>`;
+}
+
+let toastTimer;
+function toast(message, action = null) {
+  ui.toast = { message, action };
+  clearTimeout(toastTimer);
+  const el = document.getElementById('toast');
+  el.innerHTML = `<div class="toast" role="status">${esc(message)}${action ? `<button data-act="${action.act}" data-id="${action.id}">${action.label}</button>` : ''}</div>`;
+  toastTimer = setTimeout(() => { el.innerHTML = ''; }, action ? 5000 : 2500);
+}
+
+// ============================================================ ÉVÉNEMENTS
+document.addEventListener('click', async (ev) => {
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  const id = el.dataset.id;
+  if (act === 'scrim' && ev.target !== el) return; // clic à l'intérieur de la feuille
+  try {
+    await handle(act, el, id);
+  } catch (e) {
+    console.error(e);
+    toast(e.message || 'Une erreur est survenue');
+  }
+});
+
+async function handle(act, el, id) {
+  const sh = ui.sheet;
+  switch (act) {
+    // ----- groupe
+    case 'create-group': {
+      const name = document.getElementById('group-name').value.trim();
+      if (!name) return toast('Donnez un nom au groupe');
+      el.disabled = true;
+      await store.createGroup(name);
+      go('#/');
+      return render();
+    }
+    case 'join-group': {
+      const code = document.getElementById('join-code').value.trim();
+      if (code.length < 6) return toast('Le code fait 8 caractères');
+      el.disabled = true;
+      el.textContent = 'Connexion…';
+      try {
+        await store.joinGroup(code);
+        go('#/');
+        render();
+        toast(`Bienvenue dans « ${store.getState().group.name} »`);
+      } catch (e) {
+        el.disabled = false;
+        el.textContent = 'Rejoindre';
+        toast(/inconnu/i.test(e.message) ? 'Code inconnu, vérifiez-le' : `Connexion impossible : ${e.message}`);
+      }
+      return;
+    }
+    case 'demo': {
+      store.replaceAll(buildDemo(store.uuid));
+      go('#/');
+      return render();
+    }
+    case 'leave-group': {
+      const local = store.getState().group?.local || !store.cloudConfigured;
+      const msg = local
+        ? 'Effacer toutes les données de ce téléphone ? Cette action est définitive.'
+        : `Quitter le groupe sur ce téléphone ?${store.getState().dirty.length ? ' Attention : des modifications n\'ont pas encore été envoyées.' : ''}`;
+      if (!(await ask({ title: msg, ok: local ? 'Effacer' : 'Quitter', danger: true }))) return;
+      store.leaveGroup();
+      go('');
+      return render();
+    }
+    case 'sync-now': await store.sync(); return toast(store.getState().lastError || 'Synchronisé');
+    case 'share-code': {
+      const code = store.getState().group.code;
+      const url = `${location.origin}${location.pathname}#join=${code}`;
+      const text = `Rejoins « ${store.getState().group.name} » sur Les Fous de la Contrée : ${url} (code ${code})`;
+      if (navigator.share) { try { await navigator.share({ title: 'Les Fous de la Contrée', text }); } catch { /* annulé */ } return; }
+      await navigator.clipboard?.writeText(text);
+      return toast('Lien d\'invitation copié');
+    }
+    case 'copy-code':
+      await navigator.clipboard?.writeText(store.getState().group.code);
+      return toast('Code copié');
+    case 'install':
+      if (ui.installPrompt) { ui.installPrompt.prompt(); ui.installPrompt = null; render(); }
+      return;
+    case 'export-stats': return exportStats();
+    case 'export-hands': return exportHands();
+
+    // ----- feuilles
+    case 'scrim':
+    case 'sheet-close': return closeSheet();
+    case 'set': {
+      const k = el.dataset.k;
+      let v = el.dataset.v;
+      if (k === 'bid' || k === 'target') v = /^\d+$/.test(v) ? Number(v) : v;
+      if (v === '') v = null;
+      sh.draft[k] = v;
+      if (sh.kind === 'hand') fixHandDraft(sh.draft, sh.game.teams);
+      return renderSheet();
+    }
+    case 'bump': {
+      const n = Math.min(162, Math.max(0, (Number(sh.draft.points) || 0) + Number(el.dataset.v)));
+      sh.draft.points = String(n);
+      document.getElementById('pts').value = sh.draft.points;
+      return updateHandFooter();
+    }
+
+    // ----- parties
+    case 'new-game': {
+      const r = D().rules;
+      return openSheet('newGame', { slots: [null, null, null, null], target: r.target, allowSA: r.allowSA, allowTA: r.allowTA });
+    }
+    case 'pick': {
+      const s = sh.draft.slots;
+      const pid = el.dataset.v;
+      const at = s.indexOf(pid);
+      if (at >= 0) s[at] = null;
+      else {
+        const free = s.indexOf(null);
+        if (free < 0) return toast('Les 4 places sont prises : touchez une place pour la libérer');
+        s[free] = pid;
+      }
+      return renderSheet();
+    }
+    case 'slot': sh.draft.slots[Number(el.dataset.v)] = null; return renderSheet();
+    case 'shuffle': {
+      const s = [...sh.draft.slots];
+      for (let i = s.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [s[i], s[j]] = [s[j], s[i]];
+      }
+      sh.draft.slots = s;
+      return renderSheet();
+    }
+    case 'add-player-inline': {
+      const name = await ask({ title: 'Nouveau joueur', input: 'Prénom ou surnom', ok: 'Ajouter' });
+      if (!name?.trim()) return;
+      if (D().players.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())) return toast('Un joueur porte déjà ce nom');
+      const pid = store.put('player', { name: name.trim().slice(0, 30), createdAt: Date.now() });
+      const free = sh.draft.slots.indexOf(null);
+      if (free >= 0) sh.draft.slots[free] = pid;
+      return renderSheet();
+    }
+    case 'start-game': {
+      const dr = sh.draft;
+      const rules = { ...D().rules, target: dr.target, allowSA: dr.allowSA, allowTA: dr.allowTA };
+      return startGame([[dr.slots[0], dr.slots[1]], [dr.slots[2], dr.slots[3]]], rules);
+    }
+    case 'rematch': {
+      const g = store.get(id);
+      return startGame(g.teams.map((t) => [...t]), { ...g.rules });
+    }
+    case 'delete-game': {
+      if (!(await ask({ title: 'Supprimer cette partie ?', message: 'Toutes ses donnes seront effacées et les statistiques recalculées.', ok: 'Supprimer', danger: true }))) return;
+      for (const h of D().byGame.get(id) || []) store.remove(h.id);
+      store.remove(id);
+      go('#/');
+      return toast('Partie supprimée');
+    }
+    case 'game-view': ui.gameView = el.dataset.v; return render();
+
+    // ----- donnes
+    case 'new-hand': {
+      const g = store.get(id);
+      return openSheet('hand', handDraftFrom(null), { game: g });
+    }
+    case 'edit-hand': {
+      const h = store.get(id);
+      const g = store.get(h.gameId);
+      if (h.passed) {
+        if (await ask({ title: 'Supprimer cette donne passée ?', ok: 'Supprimer', danger: true })) { store.remove(id); afterHandChange(g.id, 'Donne supprimée'); }
+        return;
+      }
+      return openSheet('hand', handDraftFrom(h), { game: g });
+    }
+    case 'pass-hand': return savePassedHand();
+    case 'save-hand': return saveHand();
+    case 'delete-hand': {
+      if (!(await ask({ title: 'Supprimer cette donne ?', ok: 'Supprimer', danger: true }))) return;
+      const gid = sh.game.id;
+      store.remove(sh.draft.id);
+      closeSheet();
+      return afterHandChange(gid, 'Donne supprimée');
+    }
+    case 'undo-hand': {
+      const h = store.get(id);
+      if (!h) return;
+      store.remove(id);
+      document.getElementById('toast').innerHTML = '';
+      return afterHandChange(h.gameId, 'Donne annulée');
+    }
+    case 'close-win': overlayRoot.innerHTML = ''; return;
+
+    // ----- joueurs
+    case 'add-player': return openSheet('player', { name: '', photo: null });
+    case 'edit-player': {
+      const p = store.get(id);
+      return openSheet('player', { id, name: p.name, photo: p.photo || null });
+    }
+    case 'photo-remove': sh.draft.photo = null; return renderSheet();
+    case 'save-player': {
+      const dr = sh.draft;
+      const name = (dr.name || '').trim().slice(0, 30);
+      if (!name) return;
+      const exists = D().players.some((p) => p.id !== dr.id && p.name.toLowerCase() === name.toLowerCase());
+      if (exists) return toast('Un joueur porte déjà ce nom');
+      if (dr.id) store.patch(dr.id, { name, photo: dr.photo || null });
+      else store.put('player', { name, photo: dr.photo || null, createdAt: Date.now() });
+      closeSheet();
+      return toast(dr.id ? 'Profil mis à jour' : `${name} a rejoint le groupe`);
+    }
+    case 'delete-player': {
+      if (!(await ask({ title: 'Supprimer ce joueur ?', ok: 'Supprimer', danger: true }))) return;
+      store.remove(sh.draft.id);
+      closeSheet();
+      go('#/players');
+      return toast('Joueur supprimé');
+    }
+    default:
+  }
+}
+
+/** Garde la saisie cohérente quand on change de preneur ou d'annonce. */
+function fixHandDraft(dr, teams) {
+  const att = teamOf(teams, dr.taker);
+  if (dr.coincheBy && teamOf(teams, dr.coincheBy) === att) dr.coincheBy = null;
+  if (!dr.coincheBy) dr.surcoincheBy = null;
+  if (dr.surcoincheBy && teamOf(teams, dr.surcoincheBy) !== att) dr.surcoincheBy = null;
+  if (dr.suit === 'SA') dr.beloteBy = null;
+}
+
+document.addEventListener('input', (ev) => {
+  const el = ev.target;
+  if (el.id === 'join-code') { ui.joinCode = el.value; return; }
+  if (!ui.sheet || !el.dataset.draft) return;
+  const k = el.dataset.draft;
+  const dr = ui.sheet.draft;
+  if (el.type === 'checkbox') return; // géré par 'change'
+  if (k === 'points') {
+    el.value = el.value.replace(/\D/g, '').slice(0, 3);
+    dr.points = el.value;
+    return updateHandFooter();
+  }
+  if (k === 'target') {
+    const n = parseInt(el.value.replace(/\D/g, ''), 10);
+    if (n) dr.target = n;
+    const btn = sheetRoot.querySelector('[data-act="start-game"]');
+    if (btn) btn.disabled = !(dr.slots.every(Boolean) && dr.target >= 100);
+    sheetRoot.querySelectorAll('[data-k="target"]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === dr.target)));
+    return;
+  }
+  if (k === 'name') {
+    dr.name = el.value;
+    const btn = document.getElementById('save-player');
+    if (btn) btn.disabled = !el.value.trim();
+  }
+});
+
+document.addEventListener('change', async (ev) => {
+  const el = ev.target;
+  // Règles du groupe
+  if (el.dataset.rule) {
+    const k = el.dataset.rule;
+    const v = el.type === 'checkbox' ? el.checked : Number(el.value);
+    const g = store.getState().group;
+    const cur = store.get(g.id);
+    store.put('settings', { rules: { ...(cur?.rules || {}), [k]: v } }, g.id);
+    return toast('Règle enregistrée');
+  }
+  // Photo de profil
+  if (el.matches('input[type=file][data-photo]') && el.files?.[0] && ui.sheet) {
+    try {
+      ui.sheet.draft.photo = await fileToAvatar(el.files[0]);
+      renderSheet();
+    } catch (e) {
+      toast(e.message);
+    }
+    return;
+  }
+  // Cases à cocher des feuilles
+  if (ui.sheet && el.dataset.draft && el.type === 'checkbox') {
+    ui.sheet.draft[el.dataset.draft] = el.checked;
+    renderSheet();
+  }
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && ui.sheet) closeSheet();
+  if (ev.key === 'Enter' && ev.target.id === 'join-code') handle('join-group', document.querySelector('[data-act="join-group"]'));
+});
+
+// ============================================================ EXPORTS
+function exportStats() {
+  const d = D();
+  const header = ['Joueur', 'Parties', 'Victoires', '% victoires', '% défaites', 'Prises', 'Prises réussies', '% réussite', '% chute',
+    'Points moyens / contrat réussi', 'Annonce moyenne', 'Capots', 'Générales', 'Contres', 'Contres réussis', 'Surcontres', 'Surcontres réussis',
+    'Belotes', '% chutes infligées en défense', 'Meilleur partenaire', 'Adversaire redouté'];
+  const rows = d.players.map((p) => {
+    const s = d.stats.get(p.id);
+    return [p.name, s.games, s.wins, s.winPct, s.lossPct, s.takes, s.takesMade, s.takeMadePct, s.takeFailPct,
+      s.avgPointsMade, s.avgBid, s.capots, s.generales, s.coinches, s.coinchesWon, s.surcoinches, s.surcoinchesWon,
+      s.belotes, s.defensePct, s.bestPartner ? P(s.bestPartner.id).name : '', s.nemesis ? P(s.nemesis.id).name : ''];
+  });
+  download('fous-contree-stats.csv', toCsv(header, rows));
+}
+
+function exportHands() {
+  const d = D();
+  const header = ['Partie', 'Date', 'Donne', 'Bleus', 'Rouges', 'Preneur', 'Annonce', 'Couleur', 'Contre', 'Surcontre',
+    'Points attaque', 'Capot', 'Belote', 'Résultat', 'Points Bleus', 'Points Rouges', 'Total Bleus', 'Total Rouges'];
+  const rows = [];
+  [...d.evaluated].reverse().forEach((e, gi) => {
+    e.rows.forEach((r, i) => {
+      const h = r.hand;
+      rows.push([gi + 1, dateTime(e.game.startedAt), i + 1,
+        e.game.teams[0].map((x) => P(x).name).join(' & '), e.game.teams[1].map((x) => P(x).name).join(' & '),
+        h.passed ? '' : P(h.taker).name, h.passed ? 'passe' : bidLabel(h.bid), h.passed ? '' : SUITS[h.suit]?.label,
+        h.coincheBy ? P(h.coincheBy).name : '', h.surcoincheBy ? P(h.surcoincheBy).name : '',
+        h.attackPoints, h.capot ? 'oui' : '', h.beloteBy ? P(h.beloteBy).name : '',
+        h.passed ? '' : r.made ? 'réussi' : 'chuté', r.scores[0], r.scores[1], r.totals[0], r.totals[1]]);
+    });
+  });
+  download('fous-contree-donnes.csv', toCsv(header, rows));
+}
+
+// ============================================================ DÉMARRAGE
+async function handleJoinLink() {
+  const code = location.hash.slice('#join='.length).toUpperCase();
+  const g = store.getState().group;
+  if (g && g.code === code) { go('#/'); return; }
+  if (g && !(await ask({ title: `Rejoindre le groupe ${code} ?`, message: `Vous quitterez « ${g.name} » sur ce téléphone.`, ok: 'Rejoindre' }))) { go('#/'); return; }
+  if (g) store.leaveGroup();
+  ui.joinCode = code;
+  history.replaceState(null, '', location.pathname);
+  render();
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  ui.installPrompt = e;
+  if (route().name === 'settings') render();
+});
+
+store.subscribe((_, dataChanged) => {
+  if (dataChanged === false) {
+    // Simple changement d'état de synchro : on ne met à jour que le badge
+    const badge = document.querySelector('.topbar .sync');
+    if (badge) badge.outerHTML = syncBadge();
+    return;
+  }
+  version++;
+  // Ne pas reconstruire la page pendant une saisie dans un champ du formulaire d'accueil
+  if (!store.getState().group && document.activeElement?.tagName === 'INPUT') return;
+  render();
+});
+
+store.load();
+if (EMBED && !store.getState().group) store.replaceAll(buildDemo(store.uuid));
+if (!EMBED && location.hash.startsWith('#join=')) handleJoinLink();
+else render();
+store.startPolling();
+store.sync();
+
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.CONTREE_NO_SW) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
