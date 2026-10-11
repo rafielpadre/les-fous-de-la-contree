@@ -58,3 +58,19 @@ test('stats de partie', () => {
   assert.equal(gs.a.coinchesWon, 1);
   assert.equal(gs.c.made, 0);
 });
+
+test('évolution : la dernière photo = stats des parties terminées', async () => {
+  const { timeline } = await import('../js/stats.js');
+  const tl = timeline(players, games, hands);
+  assert.equal(tl.points.length, 2);
+  assert.equal(tl.series.a[0].winPct, 100);      // a gagne g1
+  assert.equal(tl.series.a[1].winPct, 50);       // puis perd g2
+  assert.equal(tl.series.b[1].belotes, 1);
+  assert.equal(tl.series.d[0].takes, 0);
+  assert.equal(tl.series.d[1].capots, 1);
+  const S = computeStats(players, games, hands);
+  for (const id of ['a', 'b', 'c', 'd']) {
+    assert.equal(tl.series[id][1].winPct, S.get(id).winPct);
+    assert.equal(tl.series[id][1].takePct, S.get(id).takeMadePct);
+  }
+});

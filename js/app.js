@@ -5,8 +5,8 @@ import * as store from './store.js';
 import {
   SUITS, NUMERIC_BIDS, DEFAULT_RULES, scoreHand, gameTotals, bidLabel, explain, teamOf,
 } from './scoring.js';
-import { computeStats, computeDuos, gameStats, handsByGame } from './stats.js';
-import { lineChart } from './charts.js';
+import { computeStats, computeDuos, gameStats, handsByGame, timeline, TIMELINE_STATS } from './stats.js';
+import { lineChart, multiLineChart, bindMultiLine } from './charts.js';
 import { fileToAvatar } from './photo.js';
 import { toCsv, download } from './csv.js';
 import { buildDemo } from './demo.js';
@@ -65,7 +65,7 @@ function D() {
     const res = gameTotals(hs, g.teams, g.rules);
     return { game: g, hands: hs, ...res };
   }).sort((a, b) => (b.game.startedAt ?? 0) - (a.game.startedAt ?? 0));
-  cache = { v: version, players, games, hands, byId, byGame, stats, rules, evaluated };
+  cache = { v: version, players, games, hands, byId, byGame, stats, rules, evaluated, timeline: timeline(players, games, hands) };
   return cache;
 }
 const P = (id) => D().byId[id] || { id, name: 'Joueur supprimé' };
@@ -78,7 +78,14 @@ const ui = {
   toast: null,
   installPrompt: null,
   joinCode: '',
+  chartStat: 'winPct',  // statistique affichée dans Graphiques
+  chartSel: null,       // [{ id, slot }] joueurs choisis, slot = couleur attribuée
+  chartModel: null,
 };
+
+// Couleurs des courbes (ordre fixe, validé pour le daltonisme) ; une couleur reste
+// attachée à un joueur tant qu'il est sélectionné.
+const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 
 // ------------------------------------------------------------ routage
 // En démo intégrée (artifact), la navigation se fait en mémoire.
@@ -121,10 +128,12 @@ function render() {
     case 'players': page = playersPage(); break;
     case 'player': page = playerPage(r.id); break;
     case 'history': page = historyPage(); break;
+    case 'charts': page = chartsPage(); break;
     case 'settings': page = settingsPage(); break;
     default: page = homePage();
   }
   app.innerHTML = page;
+  if (r.name === 'charts' && ui.chartModel) bindMultiLine(document.querySelector('.chart-card'), ui.chartModel);
   store.setPolling(r.name === 'game');
 }
 
@@ -149,9 +158,10 @@ function shell(title, body, { back = null, fab = '', active = '' } = {}) {
     </header>
     <main>${body}</main>
     ${fab ? `<div class="fab-wrap">${fab}</div>` : ''}
-    <nav class="tabs" aria-label="Navigation">
+    <nav class="tabs five" aria-label="Navigation">
       ${tab('#/', '♠', 'Parties', 'home')}
       ${tab('#/players', '♥', 'Joueurs', 'players')}
+      ${tab('#/charts', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19l6-7 4 4 8-10"/></svg>', 'Graphiques', 'charts')}
       ${tab('#/history', '♦', 'Historique', 'history')}
       ${tab('#/settings', '♣', 'Groupe', 'settings')}
     </nav>`;
@@ -508,6 +518,73 @@ function playerPage(id) {
     body += '</ul>';
   }
   return shell('Profil', body, { back: '#/players', active: 'players' });
+}
+
+// ============================================================ GRAPHIQUES
+function chartsPage() {
+  const d = D();
+  const tl = d.timeline;
+  // Sélection par défaut : les 4 joueurs qui ont le plus joué
+  if (!ui.chartSel) {
+    ui.chartSel = [...d.players]
+      .sort((a, b) => d.stats.get(b.id).games - d.stats.get(a.id).games)
+      .slice(0, 4)
+      .map((p, i) => ({ id: p.id, slot: i }));
+  }
+  ui.chartSel = ui.chartSel.filter((x) => d.byId[x.id]);
+  const stat = TIMELINE_STATS.find((s) => s.key === ui.chartStat) || TIMELINE_STATS[0];
+  const pctStat = stat.unit === '%';
+  const fmt = pctStat ? (v) => `${Math.round(v)} %` : stat.unit === 'pts' ? (v) => num(v) : (v) => num(v);
+  const sel = [...ui.chartSel].sort((a, b) => a.slot - b.slot);
+  const series = sel.map(({ id, slot }) => ({
+    id,
+    name: P(id).name,
+    color: SERIES_COLORS[slot],
+    values: tl.series[id].map((snap) => (snap ? snap[stat.key] : null)),
+    played: tl.points.map((pt) => pt.players.includes(id)),
+  }));
+  const shortDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'numeric' });
+  ui.chartModel = {
+    title: stat.label,
+    series,
+    heads: tl.points.map((pt, i) => `Partie ${i + 1} du groupe · ${date(pt.t)}`),
+    ticks: tl.points.map((pt) => shortDate(pt.t)),
+    pct: pctStat,
+    zeroBase: stat.unit === '',
+    fmt,
+  };
+
+  let body = `<div class="field" style="margin-top:4px"><label for="chart-stat">Statistique</label>
+    <select class="input" id="chart-stat" data-chart-stat>
+      ${TIMELINE_STATS.map((s) => `<option value="${s.key}" ${s.key === stat.key ? 'selected' : ''}>${s.label}</option>`).join('')}
+    </select></div>
+  <h2>Joueurs <span class="small muted" style="font:400 14px var(--body)">${sel.length}/8</span></h2>
+  <div class="chips" role="group" aria-label="Joueurs">
+    ${d.players.map((p) => {
+      const on = sel.find((x) => x.id === p.id);
+      return `<button class="pchip" data-act="chart-player" data-v="${p.id}" aria-pressed="${!!on}" style="${on ? `--k:${SERIES_COLORS[on.slot]}` : ''}">
+        ${avatar(p, 's')}${esc(p.name)}<span class="key"></span></button>`;
+    }).join('')}
+  </div>
+  <div class="panel chart-card" style="margin-top:18px">
+    <h3>${stat.label}</h3>
+    <p class="small muted" style="margin:0">Valeur cumulée après chaque partie terminée. Touchez la courbe pour lire les valeurs.</p>
+    ${multiLineChart(ui.chartModel)}
+  </div>`;
+
+  // Tableau des valeurs actuelles (lecture sans graphique)
+  if (series.length && tl.points.length) {
+    const rows = series.map((s) => {
+      const snap = tl.series[s.id][tl.points.length - 1];
+      return { s, v: snap ? snap[stat.key] : null, games: snap ? snap.games : 0 };
+    }).sort((a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity));
+    body += `<h2>Aujourd'hui</h2><div class="panel"><table class="vtable">
+      <thead><tr><th>Joueur</th><th class="n">${stat.label}</th><th class="n">Parties</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td><span class="who"><i style="background:${r.s.color}"></i>${esc(r.s.name)}</span></td>
+        <td class="n"><b>${r.v == null ? '–' : fmt(r.v)}</b></td><td class="n">${r.games}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }
+  return shell('Graphiques', body, { active: 'charts' });
 }
 
 // ============================================================ HISTORIQUE
@@ -1080,6 +1157,19 @@ async function handle(act, el, id) {
       return toast('Partie supprimée');
     }
     case 'game-view': ui.gameView = el.dataset.v; return render();
+    case 'chart-stat': ui.chartStat = el.dataset.v; return render();
+    case 'chart-player': {
+      const pid = el.dataset.v;
+      const at = ui.chartSel.findIndex((x) => x.id === pid);
+      if (at >= 0) ui.chartSel.splice(at, 1);
+      else {
+        if (ui.chartSel.length >= 8) return toast('8 joueurs au maximum sur un graphique');
+        const used = new Set(ui.chartSel.map((x) => x.slot));
+        const slot = [0, 1, 2, 3, 4, 5, 6, 7].find((k) => !used.has(k));
+        ui.chartSel.push({ id: pid, slot });
+      }
+      return render();
+    }
 
     // ----- donnes
     case 'new-hand': {
@@ -1180,6 +1270,7 @@ document.addEventListener('input', (ev) => {
 
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
+  if (el.dataset.chartStat !== undefined) { ui.chartStat = el.value; return render(); }
   // Règles du groupe
   if (el.dataset.rule) {
     const k = el.dataset.rule;

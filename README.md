@@ -101,6 +101,7 @@ L'icône « Fous Contrée » apparaît alors comme une application normale.
 - La partie se termine automatiquement quand une équipe atteint le score. Si les deux le dépassent sur la même donne, la plus haute gagne. En cas d'égalité parfaite, on continue.
 - Pendant une partie, le bloc **Joueurs** affiche au choix les stats de la partie ou celles de la carrière.
 - Les autres téléphones voient les scores se mettre à jour toutes les 4 secondes pendant une partie.
+- **Onglet Graphiques** : choisissez une statistique dans la liste et touchez les joueurs à comparer (8 au maximum). Une courbe par joueur montre la valeur cumulée après chaque partie terminée du groupe. Touchez la courbe pour lire les valeurs de tous les joueurs à cette partie. Le tableau « Aujourd'hui » donne les valeurs actuelles.
 
 ## Règles de comptage
 

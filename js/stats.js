@@ -209,3 +209,87 @@ export function gameStats(game, hands) {
 }
 
 export { teamOf };
+
+// =====================================================================
+//  Évolution dans le temps (écran Graphiques)
+//  Après chaque partie TERMINÉE (ordre chronologique), on prend une
+//  « photo » des statistiques cumulées de chacun des 4 joueurs.
+// =====================================================================
+export const TIMELINE_STATS = [
+  { key: 'winPct', label: '% de victoires', unit: '%' },
+  { key: 'takePct', label: '% de prises réussies', unit: '%' },
+  { key: 'coinchePct', label: '% de contres réussis', unit: '%' },
+  { key: 'defensePct', label: '% de chutes infligées en défense', unit: '%' },
+  { key: 'avgPoints', label: 'Points moyens par contrat réussi', unit: 'pts' },
+  { key: 'avgBid', label: 'Annonce moyenne', unit: 'pts' },
+  { key: 'games', label: 'Parties jouées', unit: '' },
+  { key: 'wins', label: 'Parties gagnées', unit: '' },
+  { key: 'takes', label: 'Prises tentées', unit: '' },
+  { key: 'takesMade', label: 'Prises réussies', unit: '' },
+  { key: 'coinchesWon', label: 'Contres réussis', unit: '' },
+  { key: 'belotes', label: 'Belotes', unit: '' },
+  { key: 'capots', label: 'Capots', unit: '' },
+];
+
+/**
+ * @returns {{ points: {gameId, t, players: string[]}[], series: Object<string, (object|null)[]> }}
+ *   series[pid][k] = statistiques cumulées du joueur après la k-ième partie terminée du groupe,
+ *   ou null s'il n'avait encore joué aucune partie terminée.
+ */
+export function timeline(players, games, hands) {
+  const acc = Object.fromEntries(players.map((p) => [p.id, {
+    games: 0, wins: 0, takes: 0, takesMade: 0, made: [], bids: [],
+    coinches: 0, coinchesWon: 0, defenses: 0, defensesWon: 0, belotes: 0, capots: 0,
+  }]));
+  const evaluated = evaluateGames(games, hands)
+    .filter((e) => e.finished)
+    .sort((a, b) => (a.game.finishedAt ?? a.game.startedAt ?? 0) - (b.game.finishedAt ?? b.game.startedAt ?? 0));
+  const points = [];
+  const series = Object.fromEntries(players.map((p) => [p.id, []]));
+
+  for (const ev of evaluated) {
+    const { game, rows } = ev;
+    const teams = game.teams;
+    for (const row of rows) {
+      const h = row.hand;
+      if (h.passed) continue;
+      const tk = acc[h.taker];
+      if (tk) {
+        tk.takes++;
+        if (row.made) { tk.takesMade++; tk.made.push(row.scores[row.attack]); if (h.capot) tk.capots++; }
+        const bv = bidValue(h.bid);
+        if (bv <= 160) tk.bids.push(bv);
+      }
+      for (const pid of teams[1 - row.attack]) {
+        if (!acc[pid]) continue;
+        acc[pid].defenses++;
+        if (!row.made) acc[pid].defensesWon++;
+      }
+      if (h.coincheBy && acc[h.coincheBy]) {
+        acc[h.coincheBy].coinches++;
+        if (!row.made) acc[h.coincheBy].coinchesWon++;
+      }
+      if (h.beloteBy && acc[h.beloteBy] && h.suit !== 'SA') acc[h.beloteBy].belotes++;
+    }
+    teams.forEach((team, ti) => team.forEach((pid) => {
+      if (!acc[pid]) return;
+      acc[pid].games++;
+      if (ev.winner === ti) acc[pid].wins++;
+    }));
+    points.push({ gameId: game.id, t: game.finishedAt ?? game.startedAt, players: teams.flat() });
+    for (const p of players) {
+      const a = acc[p.id];
+      series[p.id].push(a.games === 0 ? null : {
+        games: a.games, wins: a.wins, takes: a.takes, takesMade: a.takesMade,
+        coinchesWon: a.coinchesWon, belotes: a.belotes, capots: a.capots,
+        winPct: pct(a.wins, a.games),
+        takePct: pct(a.takesMade, a.takes),
+        coinchePct: pct(a.coinchesWon, a.coinches),
+        defensePct: pct(a.defensesWon, a.defenses),
+        avgPoints: mean(a.made),
+        avgBid: mean(a.bids),
+      });
+    }
+  }
+  return { points, series };
+}
