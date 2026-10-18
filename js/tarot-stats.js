@@ -4,6 +4,8 @@
 import { tarotTotals, CONTRACT_KEYS } from './tarot.js';
 import { handsByGame } from './stats.js';
 
+// Clés « à plat » des parts de contrats (pour les graphiques)
+export const SHARE_KEY = { petite: 'sharePetite', garde: 'shareGarde', gardeSans: 'shareGardeSans', gardeContre: 'shareGardeContre' };
 const pct = (num, den) => (den > 0 ? (100 * num) / den : null);
 const mean = (arr) => (arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null);
 
@@ -20,7 +22,7 @@ function blank(id) {
     id,
     games: 0, wins: 0, winPct: null, podiums: 0, podiumPct: null, ranks: [], avgRank: null,
     finals: [], avgFinal: null, best: null,
-    handsPlayed: 0,
+    handsPlayed: 0, handsDealt: 0, takeRate: null,
     takes: 0, takesMade: 0, takePct: null, takeFailPct: null,
     byContract: Object.fromEntries(CONTRACT_KEYS.map((c) => [c, { takes: 0, made: 0 }])),
     gains: [], avgGainMade: null, bouts: [], avgBouts: null,
@@ -36,6 +38,8 @@ function blank(id) {
 function addHand(get, row, players) {
   const h = row.hand;
   for (const m of h.miseres || []) if (get(m)) get(m).miseres++;
+  // Donnes distribuées (y compris « tous passent ») : base du % de prises
+  for (const p of players) if (get(p)) get(p).handsDealt++;
   if (h.passed) return;
   for (const p of players) if (get(p)) get(p).handsPlayed++;
   const tk = get(h.taker);
@@ -101,11 +105,18 @@ function finalize(s) {
   s.best = s.finals.length ? Math.max(...s.finals) : null;
   s.takePct = pct(s.takesMade, s.takes);
   s.takeFailPct = pct(s.takes - s.takesMade, s.takes);
+  s.takeRate = pct(s.takes, s.handsDealt);
   s.avgGainMade = mean(s.gains);
   s.avgBouts = mean(s.bouts);
   s.calledPct = pct(s.calledMade, s.called);
   s.defensePct = pct(s.defensesWon, s.defenses);
   for (const c of Object.values(s.byContract)) c.pct = pct(c.made, c.takes);
+  // Niveau des prises : part de chaque contrat parmi les prises du joueur
+  for (const c of CONTRACT_KEYS) {
+    const x = s.byContract[c] || { takes: 0, made: 0 };
+    x.share = pct(x.takes, s.takes);
+    s[SHARE_KEY[c]] = x.share;
+  }
   const duo = Object.entries(s.partners)
     .filter(([, v]) => v.hands >= 2)
     .map(([id, v]) => ({ id, ...v, pct: pct(v.made, v.hands) }))
@@ -144,6 +155,11 @@ export const TAROT_TIMELINE_STATS = [
   { key: 'avgRank', label: 'Place moyenne', unit: 'rang' },
   { key: 'avgFinal', label: 'Score final moyen', unit: 'pts' },
   { key: 'takePct', label: '% de prises réussies', unit: '%' },
+  { key: 'takeRate', label: '% de prises sur les donnes jouées', unit: '%' },
+  { key: 'sharePetite', label: 'Part de Petites dans ses prises', unit: '%' },
+  { key: 'shareGarde', label: 'Part de Gardes dans ses prises', unit: '%' },
+  { key: 'shareGardeSans', label: 'Part de Gardes sans dans ses prises', unit: '%' },
+  { key: 'shareGardeContre', label: 'Part de Gardes contre dans ses prises', unit: '%' },
   { key: 'calledPct', label: '% de réussite comme appelé (à 5)', unit: '%' },
   { key: 'defensePct', label: '% de contrats chutés en défense', unit: '%' },
   { key: 'avgGainMade', label: 'Gain moyen par prise réussie', unit: 'pts' },
@@ -160,24 +176,32 @@ export const TAROT_TIMELINE_STATS = [
 export function tarotTimeline(players, games, hands) {
   const acc = new Map(players.map((p) => [p.id, blank(p.id)]));
   const get = (id) => acc.get(id);
-  const evs = evaluateTarot(games, hands)
-    .filter((e) => e.finished)
-    .sort((a, b) => (a.game.finishedAt ?? a.game.startedAt ?? 0) - (b.game.finishedAt ?? b.game.startedAt ?? 0));
+  // Parties terminées dans l'ordre, puis les parties en cours (point « en direct »)
+  const all = evaluateTarot(games, hands);
+  const evs = [
+    ...all.filter((e) => e.finished)
+      .sort((a, b) => (a.game.finishedAt ?? a.game.startedAt ?? 0) - (b.game.finishedAt ?? b.game.startedAt ?? 0)),
+    ...all.filter((e) => !e.finished && e.played > 0)
+      .sort((a, b) => (a.game.startedAt ?? 0) - (b.game.startedAt ?? 0)),
+  ];
   const points = [];
   const series = Object.fromEntries(players.map((p) => [p.id, []]));
+  const seen = new Set();
   for (const ev of evs) {
     for (const row of ev.rows) addHand(get, row, ev.game.players);
-    addGame(get, ev);
-    points.push({ gameId: ev.game.id, t: ev.game.finishedAt ?? ev.game.startedAt, players: [...ev.game.players] });
+    if (ev.finished) addGame(get, ev);       // place et victoire : seulement en fin de partie
+    for (const pid of ev.game.players) seen.add(pid);
+    points.push({ gameId: ev.game.id, t: ev.game.finishedAt ?? ev.game.startedAt, players: [...ev.game.players], live: !ev.finished });
     for (const p of players) {
       const a = get(p.id);
-      if (!a.games) { series[p.id].push(null); continue; }
+      if (!seen.has(p.id)) { series[p.id].push(null); continue; }
       const snap = finalize({ ...a, byContract: structuredClone(a.byContract), partners: {} });
       series[p.id].push({
         games: snap.games, wins: snap.wins, podiums: snap.podiums, takes: snap.takes,
         pabMade: snap.pabMade, chelems: snap.chelems,
         winPct: snap.winPct, podiumPct: snap.podiumPct, avgRank: snap.avgRank, avgFinal: snap.avgFinal,
-        takePct: snap.takePct, calledPct: snap.calledPct, defensePct: snap.defensePct,
+        sharePetite: snap.sharePetite, shareGarde: snap.shareGarde, shareGardeSans: snap.shareGardeSans, shareGardeContre: snap.shareGardeContre,
+        takePct: snap.takePct, takeRate: snap.takeRate, calledPct: snap.calledPct, defensePct: snap.defensePct,
         avgGainMade: snap.avgGainMade, avgBouts: snap.avgBouts,
       });
     }

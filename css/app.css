@@ -477,6 +477,10 @@ p { margin: 0 0 10px; }
 .mchart svg { width: 100%; height: auto; display: block; overflow: visible; }
 .mchart svg:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; border-radius: 6px; }
 .mchart .grid { stroke: var(--line); stroke-width: 1; }
+.mchart .refline { stroke: var(--gold); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.mchart .grid.zero { stroke: var(--muted); stroke-width: 1.2; }
+.live-note { display: inline-flex; align-items: center; gap: 6px; }
+.live-note i { width: 18px; border-top: 2px dashed var(--ink-2); display: inline-block; }
 .mchart .ax { font: 11px var(--body); fill: var(--muted); font-variant-numeric: tabular-nums; }
 .mchart .lbl { font: 700 11.5px var(--body); fill: var(--ink-2); }
 .mchart .xhair { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; }
@@ -579,3 +583,17 @@ p { margin: 0 0 10px; }
 }
 .gdot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); flex: none; }
 .gdot.on { border-color: var(--blue); background: radial-gradient(circle, var(--blue) 45%, transparent 50%); }
+
+/* ---------- Titres de parties, mise à jour ---------- */
+.gtitle { font: 800 16px/1.25 var(--display); margin-bottom: 8px; color: var(--ink); overflow-wrap: anywhere; }
+.upd-banner {
+  position: fixed; left: 12px; right: 12px; top: calc(70px + var(--safe-t)); z-index: 85;
+  display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px;
+  background: var(--gold); color: var(--ink); border-radius: var(--r-md); box-shadow: var(--shadow); font-weight: 700; font-size: 14.5px;
+}
+.upd-banner span { flex: 1; }
+.upd-banner button { border: 0; background: var(--ink); color: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 700; }
+
+/* ---------- Répartition des contrats (tarot) ---------- */
+.cbar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; gap: 2px; background: var(--card); }
+.cbar span { display: grid; place-items: center; font: 700 12.5px var(--body); font-variant-numeric: tabular-nums; min-width: 4px; }

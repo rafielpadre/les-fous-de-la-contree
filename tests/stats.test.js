@@ -96,3 +96,29 @@ test('prise partagée : comptée pour les deux partenaires', () => {
   const gs = gameStats(g[0], hs);
   assert.deepEqual([gs.a.takes, gs.a.made, gs.a.shared], [2, 1, 1]);
 });
+
+test('évolution : la partie en cours apparaît comme point « en direct »', async () => {
+  const { timeline } = await import('../js/stats.js');
+  const running = { id: 'g3', teams: [['a', 'b'], ['c', 'd']], rules: { target: 2000 }, startedAt: 5 };
+  const hs = [...hands, { gameId: 'g3', idx: 0, taker: 'c', bid: 80, suit: 'H', attackPoints: 90 }];
+  const tl = timeline(players, [...games, running], hs);
+  assert.equal(tl.points.length, 3);
+  assert.equal(tl.points[2].live, true);
+  assert.equal(tl.series.c[2].takes, 2);          // la prise en cours est comptée
+  assert.equal(tl.series.c[2].games, 2);          // mais pas encore la partie
+});
+
+test('% de prises sur les donnes jouées (donnes passées comprises)', () => {
+  const g = [{ id: 'g', teams: [['a', 'b'], ['c', 'd']], rules: { target: 2000 }, startedAt: 1 }];
+  const hs = [
+    { gameId: 'g', idx: 0, taker: 'a', bid: 80, suit: 'H', attackPoints: 90 },
+    { gameId: 'g', idx: 1, passed: true },
+    { gameId: 'g', idx: 2, taker: 'c', bid: 80, suit: 'H', attackPoints: 90 },
+    { gameId: 'g', idx: 3, taker: 'a', bid: 90, suit: 'S', attackPoints: 100 },
+  ];
+  const S = computeStats(players, g, hs);
+  assert.equal(S.get('a').handsDealt, 4);
+  assert.equal(S.get('a').takeRate, 50);          // 2 prises / 4 donnes
+  assert.equal(S.get('b').takeRate, 0);
+  assert.equal(gameStats(g[0], hs).a.dealt, 4);
+});

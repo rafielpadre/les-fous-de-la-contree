@@ -42,11 +42,12 @@ export function lineChart(series, { height = 170, labels = [] } = {}) {
 // =====================================================================
 const MW = 360, MH = 230, ML = 40, MT = 14, MB = 30;
 
-function niceScale(lo, hi, count = 4) {
-  if (lo === hi) { lo = lo - 1; hi = hi + 1; }
+function niceScale(lo, hi, count = 4, integer = false) {
+  if (lo === hi) { lo = integer ? Math.max(0, lo - 1) : lo - 1; hi = hi + 1; }
   const raw = (hi - lo) / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  let step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  if (integer) step = Math.max(1, Math.ceil(step));   // compteurs : graduations entières
   const min = Math.floor(lo / step) * step;
   const max = Math.ceil(hi / step) * step;
   const ticks = [];
@@ -59,12 +60,13 @@ function geometry(model) {
   const labelled = model.series.length <= 4;            // étiquettes en bout de courbe
   const MR = labelled ? 70 : 14;
   const all = model.series.flatMap((s) => s.values.filter((v) => v != null));
+  if (model.ref) all.push(model.ref.value);
   let sc;
   if (model.pct) sc = { min: 0, max: 100, ticks: [0, 25, 50, 75, 100] };
   else if (!all.length) sc = { min: 0, max: 1, ticks: [0, 1] };
   else {
     const lo = model.zeroBase ? 0 : Math.min(...all);
-    sc = niceScale(lo, Math.max(...all));
+    sc = niceScale(lo, Math.max(...all), 4, !!model.zeroBase);
   }
   const x = (i) => ML + (n <= 1 ? (MW - ML - MR) / 2 : (i * (MW - ML - MR)) / (n - 1));
   // invert : la plus petite valeur en haut (ex. place moyenne, 1ᵉʳ en haut)
@@ -76,32 +78,47 @@ function geometry(model) {
 export function multiLineChart(model) {
   const g = geometry(model);
   const { n, sc, x, y } = g;
-  if (!n) return '<p class="muted">Aucune partie terminée pour l\'instant : les courbes apparaîtront après la première.</p>';
+  if (!n) return `<p class="muted">${model.empty || 'Aucune partie pour l\'instant : les courbes apparaîtront après la première donne.'}</p>`;
   if (!model.series.length) return '<p class="muted">Choisissez au moins un joueur.</p>';
 
   let svg = '';
-  // Grille horizontale + axe Y
+  // Grille horizontale + axe Y (la ligne du zéro est marquée quand il y a des négatifs)
   for (const t of sc.ticks) {
-    svg += `<line x1="${ML}" x2="${MW - g.MR}" y1="${y(t)}" y2="${y(t)}" class="grid"/>`;
+    svg += `<line x1="${ML}" x2="${MW - g.MR}" y1="${y(t)}" y2="${y(t)}" class="grid${t === 0 && sc.min < 0 ? ' zero' : ''}"/>`;
     svg += `<text x="${ML - 6}" y="${y(t) + 4}" text-anchor="end" class="ax">${model.fmt(t)}</text>`;
+  }
+  // Ligne de référence (ex. objectif de la partie)
+  if (model.ref) {
+    const ry = y(model.ref.value);
+    svg += `<line x1="${ML}" x2="${MW - g.MR}" y1="${ry}" y2="${ry}" class="refline"/>`;
+    svg += `<text x="${ML + 4}" y="${ry - 5}" class="ax">${escTxt(model.ref.label)}</text>`;
   }
   // Axe X : quelques repères
   const step = Math.max(1, Math.ceil(n / 5));
   for (let i = 0; i < n; i += step) {
     svg += `<text x="${x(i)}" y="${MH - 8}" text-anchor="middle" class="ax">${model.ticks[i]}</text>`;
   }
-  // Courbes : un point par partie jouée par le joueur, reliés entre eux
+  // Courbes : un point par partie jouée par le joueur, reliés entre eux.
+  // Les points « en direct » (partie en cours, provisoire) : trait pointillé, rond creux.
+  const live = model.live || [];
   const ends = [];
   for (const s of model.series) {
     const pts = [];
     s.values.forEach((v, i) => { if (v != null && s.played[i]) pts.push([x(i), y(v), i]); });
     if (!pts.length) continue;
-    const d = pts.map((p, k) => `${k ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
-    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const path = (arr) => arr.map((p, k) => `${k ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+    const firstLive = pts.findIndex((p) => live[p[2]]);
+    const solid = firstLive < 0 ? pts : pts.slice(0, firstLive);
+    const dashed = firstLive < 0 ? [] : pts.slice(Math.max(0, firstLive - 1));
+    if (solid.length) svg += `<path d="${path(solid)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    if (dashed.length > 1) svg += `<path d="${path(dashed)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-dasharray="4 4" stroke-linecap="round"/>`;
     const showAll = n <= 16;
     for (const [k, p] of pts.entries()) {
-      if (!showAll && k !== pts.length - 1) continue;
-      svg += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${s.color}" stroke="var(--card)" stroke-width="2"/>`;
+      const isLive = !!live[p[2]];
+      if (!showAll && k !== pts.length - 1 && !isLive) continue;
+      svg += isLive
+        ? `<circle cx="${p[0]}" cy="${p[1]}" r="4.5" fill="var(--card)" stroke="${s.color}" stroke-width="2.5"/>`
+        : `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${s.color}" stroke="var(--card)" stroke-width="2"/>`;
     }
     const last = pts[pts.length - 1];
     ends.push({ y: last[1], x: last[0], name: s.name, color: s.color });

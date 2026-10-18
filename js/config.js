@@ -10,6 +10,6 @@
 //  Laissez vide pour utiliser l'app en mode local (sur un seul téléphone).
 // =====================================================================
 window.CONTREE_CONFIG = {
-  supabaseUrl: 'https://yqcttetjbnfldbsammbg.supabase.co',
-  supabaseKey: 'sb_publishable_1yhsc3Ixu-X23CsAeGu-Ow_ebPJaAdM',
+  supabaseUrl: '',
+  supabaseKey: '',
 };

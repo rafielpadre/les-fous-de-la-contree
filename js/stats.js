@@ -43,7 +43,7 @@ function emptyStats(id) {
   return {
     id,
     games: 0, wins: 0, losses: 0, winPct: null, lossPct: null,
-    handsPlayed: 0,
+    handsPlayed: 0, handsDealt: 0, takeRate: null,
     takes: 0, takesMade: 0, takesFailed: 0, takeMadePct: null, takeFailPct: null,
     soloTakes: 0, soloMade: 0, soloPct: null,
     sharedTakes: 0, sharedMade: 0, sharedPct: null,
@@ -81,6 +81,8 @@ export function computeStats(players, games, hands, { minGamesForDuo = 2 } = {})
     // ---- Statistiques par donne (toutes parties, même en cours) ----
     rows.forEach((row) => {
       const h = row.hand;
+      // Donnes distribuées (y compris « tous passent ») : base du % de prises
+      for (const pid of all) if (get(pid)) get(pid).handsDealt++;
       if (h.passed) return;
       for (const pid of all) if (get(pid)) get(pid).handsPlayed++;
 
@@ -160,6 +162,7 @@ export function computeStats(players, games, hands, { minGamesForDuo = 2 } = {})
     s.lossPct = pct(s.losses, s.games);
     s.takeMadePct = pct(s.takesMade, s.takes);
     s.takeFailPct = pct(s.takesFailed, s.takes);
+    s.takeRate = pct(s.takes, s.handsDealt);
     s.soloPct = pct(s.soloMade, s.soloTakes);
     s.sharedPct = pct(s.sharedMade, s.sharedTakes);
     s.avgPointsMade = mean(s._made);
@@ -213,9 +216,10 @@ export function computeDuos(games, hands) {
 export function gameStats(game, hands) {
   const out = {};
   for (const pid of [...game.teams[0], ...game.teams[1]]) {
-    out[pid] = { takes: 0, made: 0, shared: 0, coinches: 0, coinchesWon: 0, belotes: 0, points: 0 };
+    out[pid] = { takes: 0, made: 0, shared: 0, coinches: 0, coinchesWon: 0, belotes: 0, points: 0, dealt: 0 };
   }
   for (const h of hands) {
+    for (const t of Object.values(out)) t.dealt++;
     if (h.passed) continue;
     const r = scoreHand(h, game.teams, game.rules);
     for (const pid of contractors(h, game.teams)) {
@@ -244,6 +248,7 @@ export { teamOf };
 export const TIMELINE_STATS = [
   { key: 'winPct', label: '% de victoires', unit: '%' },
   { key: 'takePct', label: '% de prises réussies (solo + partagées)', unit: '%' },
+  { key: 'takeRate', label: '% de prises sur les donnes jouées', unit: '%' },
   { key: 'soloPct', label: '% de prises solo réussies', unit: '%' },
   { key: 'sharedPct', label: '% de prises partagées réussies', unit: '%' },
   { key: 'coinchePct', label: '% de contres réussis', unit: '%' },
@@ -269,11 +274,16 @@ export function timeline(players, games, hands) {
   const acc = Object.fromEntries(players.map((p) => [p.id, {
     games: 0, wins: 0, takes: 0, takesMade: 0, made: [], bids: [],
     soloTakes: 0, soloMade: 0, sharedTakes: 0, sharedMade: 0,
-    coinches: 0, coinchesWon: 0, defenses: 0, defensesWon: 0, belotes: 0, capots: 0,
+    coinches: 0, coinchesWon: 0, defenses: 0, defensesWon: 0, belotes: 0, capots: 0, seen: false, handsDealt: 0,
   }]));
-  const evaluated = evaluateGames(games, hands)
-    .filter((e) => e.finished)
-    .sort((a, b) => (a.game.finishedAt ?? a.game.startedAt ?? 0) - (b.game.finishedAt ?? b.game.startedAt ?? 0));
+  // Parties terminées dans l'ordre, puis les parties en cours (point « en direct »)
+  const all = evaluateGames(games, hands);
+  const evaluated = [
+    ...all.filter((e) => e.finished)
+      .sort((a, b) => (a.game.finishedAt ?? a.game.startedAt ?? 0) - (b.game.finishedAt ?? b.game.startedAt ?? 0)),
+    ...all.filter((e) => !e.finished && e.rows.some((r) => !r.hand.passed))
+      .sort((a, b) => (a.game.startedAt ?? 0) - (b.game.startedAt ?? 0)),
+  ];
   const points = [];
   const series = Object.fromEntries(players.map((p) => [p.id, []]));
 
@@ -282,6 +292,7 @@ export function timeline(players, games, hands) {
     const teams = game.teams;
     for (const row of rows) {
       const h = row.hand;
+      for (const pid of teams.flat()) if (acc[pid]) acc[pid].handsDealt++;
       if (h.passed) continue;
       for (const pid of contractors(h, teams)) {
         const tk = acc[pid];
@@ -305,17 +316,20 @@ export function timeline(players, games, hands) {
     }
     teams.forEach((team, ti) => team.forEach((pid) => {
       if (!acc[pid]) return;
+      acc[pid].seen = true;
+      if (!ev.finished) return;            // partie en cours : pas encore de victoire/défaite
       acc[pid].games++;
       if (ev.winner === ti) acc[pid].wins++;
     }));
-    points.push({ gameId: game.id, t: game.finishedAt ?? game.startedAt, players: teams.flat() });
+    points.push({ gameId: game.id, t: game.finishedAt ?? game.startedAt, players: teams.flat(), live: !ev.finished });
     for (const p of players) {
       const a = acc[p.id];
-      series[p.id].push(a.games === 0 ? null : {
+      series[p.id].push(!a.seen ? null : {
         games: a.games, wins: a.wins, takes: a.takes, takesMade: a.takesMade,
         coinchesWon: a.coinchesWon, belotes: a.belotes, capots: a.capots,
         winPct: pct(a.wins, a.games),
         takePct: pct(a.takesMade, a.takes),
+        takeRate: pct(a.takes, a.handsDealt),
         soloPct: pct(a.soloMade, a.soloTakes),
         sharedPct: pct(a.sharedMade, a.sharedTakes),
         sharedTakes: a.sharedTakes,

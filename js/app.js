@@ -17,7 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_VERSION = '7 — contrée + tarot + multi-groupes';
+const APP_BUILD = 11;   // doit correspondre à 'fdc-v11' dans sw.js
+const APP_VERSION = `${APP_BUILD} — niveau des prises au tarot`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -157,6 +158,8 @@ const ui = {
   tchartStat: 'winPct', // statistique affichée dans Graphiques (tarot)
   pchartC: 'winPct',    // statistique du graphique d'un profil (contrée)
   pchartT: 'winPct',    // … (tarot)
+  gstatC: 'takeMadePct', // statistique du graphique pendant une partie (contrée)
+  gstatT: 'takePct',     // … (tarot)
   bindQueue: [],        // graphiques à rendre interactifs après l'affichage
   kind: loadKind(),     // jeu affiché : 'contree' | 'tarot'
 };
@@ -366,6 +369,12 @@ function rankPlayers() {
     .sort((a, b) => b.s.winPct - a.s.winPct || b.s.games - a.s.games);
 }
 
+/** Titre d'une partie : celui donné par les joueurs, ou rien. */
+const gameTitle = (g) => (g.title || '').trim();
+const titleLine = (g) => (gameTitle(g) ? `<div class="gtitle">${esc(gameTitle(g))}</div>` : '');
+const titleField = (dr) => `<div class="field"><label for="g-title">Titre de la partie <span class="hint">(facultatif)</span></label>
+  <input class="input" id="g-title" data-draft="title" maxlength="50" placeholder="Ex. Revanche du jeudi, Finale de Noël…" value="${esc(dr.title || '')}" autocomplete="off"></div>`;
+
 function gameCard(e) {
   const g = e.game;
   const lead = e.totals[0] === e.totals[1] ? -1 : e.totals[0] > e.totals[1] ? 0 : 1;
@@ -374,6 +383,7 @@ function gameCard(e) {
     : `${e.hands.length} donne${e.hands.length > 1 ? 's' : ''} · objectif ${g.rules.target}`;
   return `
     <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px">
+      ${titleLine(g)}
       <div class="row">
         <div class="av-pair">${g.teams[0].map((id) => avatar(P(id), 's')).join('')}</div>
         <div style="flex:1;min-width:0">
@@ -436,15 +446,17 @@ function gamePage(id) {
     let what;
     if (ui.gameView === 'game') {
       const s = gs[pid];
-      what = `Prises ${s.made}/${s.takes}${s.shared ? ` (${s.shared} part.)` : ''}${s.made ? ` · ${num(s.points / s.made)} pts` : ''}<br>Contres ${s.coinchesWon}/${s.coinches} · Belotes ${s.belotes}`;
+      what = `Prises ${s.made}/${s.takes}${s.shared ? ` (${s.shared} part.)` : ''}${s.made ? ` · ${num(s.points / s.made)} pts` : ''}<br>A pris ${s.takes} donne${s.takes > 1 ? 's' : ''} sur ${s.dealt}<br>Contres ${s.coinchesWon}/${s.coinches} · Belotes ${s.belotes}`;
     } else {
       const s = d.stats.get(pid);
-      what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takeMadePct)} · Contres ${pct(s.coinchePct)}` : '';
+      what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takeMadePct)} · Contres ${pct(s.coinchePct)}<br>Prend ${pct(s.takeRate)} des donnes` : '';
     }
     return `<a class="mini t${ti}" href="#/player/${pid}" style="text-decoration:none;color:inherit">
       <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
   }).join('');
   body += '</div>';
+
+  body += gameLiveChart(e, false);
 
   // Donnes
   body += '<h2>Donnes</h2>';
@@ -458,12 +470,13 @@ function gamePage(id) {
 
   body += `<div style="margin-top:22px" class="row wrap">
       <span class="small muted" style="flex:1">Commencée le ${dateTime(g.startedAt)}</span>
+      <button class="link" data-act="rename-game" data-id="${g.id}">${gameTitle(g) ? 'Renommer' : 'Donner un titre'}</button>
       <button class="link" style="color:var(--red)" data-act="delete-game" data-id="${g.id}">Supprimer la partie</button>
     </div>`;
 
   const fab = e.winner === null
     ? `<button class="btn gold block" data-act="new-hand" data-id="${g.id}">Nouvelle donne</button>` : '';
-  return shell('Partie en cours', body, { back: '#/', fab, active: 'home' });
+  return shell(esc(gameTitle(g) || (e.winner !== null ? 'Partie terminée' : 'Partie en cours')), body, { back: '#/', fab, active: 'home' });
 }
 
 function handRow(row, n, teams) {
@@ -567,6 +580,7 @@ function playerPage(id, opts = {}) {
     <div class="panel" style="margin-top:10px">
       ${s.takes ? `<div class="meter" aria-hidden="true"><span style="width:${s.takeMadePct}%"></span></div>` : ''}
       <dl class="dl">
+        <dt>Prises sur les donnes jouées</dt><dd>${s.takes}/${s.handsDealt} (${pct(s.takeRate)})</dd>
         <dt>Prises solo réussies</dt><dd>${s.soloMade}/${s.soloTakes} (${pct(s.soloPct)})</dd>
         <dt>Prises partagées réussies</dt><dd>${s.sharedMade}/${s.sharedTakes} (${pct(s.sharedPct)})</dd>
         <dt>Points moyens par contrat réussi</dt><dd>${num(s.avgPointsMade)}</dd>
@@ -614,7 +628,7 @@ function playerPage(id, opts = {}) {
       const partner = e.game.teams[ti].find((x) => x !== id);
       return `<li><a class="item" ${opts.cross ? '' : `href="#/game/${e.game.id}"`} style="text-decoration:none;color:inherit">
         <span class="tag ${won ? 'ok' : 'ko'}" style="margin:0">${won ? 'Gagnée' : 'Perdue'}</span>
-        <span class="main"><span class="t">avec ${esc(P(partner).name)}</span><br><span class="s">contre ${teamNames(e.game.teams[1 - ti])} · ${date(e.game.finishedAt)}</span></span>
+        <span class="main"><span class="t">${gameTitle(e.game) ? `${esc(gameTitle(e.game))} · ` : ''}avec ${esc(P(partner).name)}</span><br><span class="s">contre ${teamNames(e.game.teams[1 - ti])} · ${date(e.game.finishedAt)}</span></span>
         <span class="r" style="font-size:17px">${e.totals[ti]}<small>à ${e.totals[1 - ti]}</small></span></a></li>`;
     }).join('');
     body += '</ul>';
@@ -654,10 +668,12 @@ function profileChart(id, d, tarot, opts = {}) {
   const model = {
     title: stat.label,
     series: [{ id, name: P(id).name, color: SERIES_COLORS[0], values: idx.map((i) => tl.series[id]?.[i]?.[stat.key] ?? null), played: idx.map(() => true) }],
-    heads: idx.map((i, k) => `Sa partie ${k + 1} · ${date(tl.points[i].t)}`),
-    ticks: idx.map((_, k) => String(k + 1)),
+    heads: idx.map((i, k) => (tl.points[i].live ? 'Partie en cours (provisoire)' : `Sa partie ${k + 1} · ${date(tl.points[i].t)}`)),
+    ticks: idx.map((i, k) => (tl.points[i].live ? 'direct' : String(k + 1))),
+    live: idx.map((i) => !!tl.points[i].live),
     pct: pctStat, zeroBase: stat.unit === '', invert: stat.key === 'avgRank', fmt,
   };
+  const hasLive = model.live.some(Boolean);
   ui.bindQueue.push(['.pchart-card', model]);
   return `<h2>Évolution</h2><div class="panel pchart-card">
     <div class="field" style="margin-top:0"><label for="pchart-stat">Statistique</label>
@@ -665,7 +681,8 @@ function profileChart(id, d, tarot, opts = {}) {
         ${STATS.map((x) => `<option value="${x.key}" ${x.key === stat.key ? 'selected' : ''}>${x.label}</option>`).join('')}
       </select></div>
     ${multiLineChart(model)}
-    <p class="small muted" style="margin:6px 0 0">Valeur cumulée après chacune de ses parties terminées${opts.cross ? ', tous groupes confondus' : ''}. Touchez la courbe pour lire les valeurs.</p>
+    <p class="small muted" style="margin:6px 0 0">Valeur cumulée après chacune de ses parties${opts.cross ? ', tous groupes confondus' : ''}. Touchez la courbe pour lire les valeurs.</p>
+    ${hasLive ? liveNote() : ''}
   </div>`;
 }
 
@@ -773,6 +790,125 @@ function groupsSheet() {
   </div>`;
 }
 
+/** Légende du point provisoire. */
+function liveNote() {
+  return `<p class="small muted live-note" style="margin:6px 0 0"><i></i>Pointillés : partie en cours, mis à jour à chaque donne.
+    Les victoires et places ne comptent qu'à la fin de la partie.</p>`;
+}
+
+/** Graphique « Évolution des scores » dans l'écran d'une partie (donne par donne). */
+// Statistiques proposées dans le graphique d'une partie.
+// scope : 'both' = cette partie et carrière ; 'career' = carrière seulement.
+const GAME_STATS_C = [
+  { key: 'takeMadePct', label: '% de prises réussies', unit: '%' },
+  { key: 'takeRate', label: '% de prises sur les donnes jouées', unit: '%' },
+  { key: 'takesMade', label: 'Prises réussies', unit: '' },
+  { key: 'takes', label: 'Prises tentées', unit: '' },
+  { key: 'avgPointsMade', label: 'Points moyens par contrat réussi', unit: 'pts' },
+  { key: 'avgBid', label: 'Annonce moyenne', unit: 'pts' },
+  { key: 'coinchesWon', label: 'Contres réussis', unit: '' },
+  { key: 'defensePct', label: '% de chutes infligées en défense', unit: '%' },
+  { key: 'belotes', label: 'Belotes', unit: '' },
+  { key: 'capots', label: 'Capots', unit: '' },
+  { key: 'winPct', label: '% de victoires', unit: '%', scope: 'career' },
+  { key: 'score', label: 'Score des équipes', unit: 'pts', scope: 'game' },
+];
+const GAME_STATS_T = [
+  { key: 'takePct', label: '% de prises réussies', unit: '%' },
+  { key: 'takeRate', label: '% de prises sur les donnes jouées', unit: '%' },
+  { key: 'takesMade', label: 'Prises réussies', unit: '' },
+  { key: 'takes', label: 'Prises tentées', unit: '' },
+  { key: 'sharePetite', label: 'Part de Petites dans ses prises', unit: '%' },
+  { key: 'shareGarde', label: 'Part de Gardes dans ses prises', unit: '%' },
+  { key: 'shareGardeSans', label: 'Part de Gardes sans dans ses prises', unit: '%' },
+  { key: 'shareGardeContre', label: 'Part de Gardes contre dans ses prises', unit: '%' },
+  { key: 'avgGainMade', label: 'Gain moyen par prise réussie', unit: 'pts' },
+  { key: 'avgBouts', label: 'Bouts moyens quand il prend', unit: 'dec' },
+  { key: 'called', label: 'Fois appelé (à 5)', unit: '', five: true },
+  { key: 'calledPct', label: '% de réussite comme appelé (à 5)', unit: '%', five: true },
+  { key: 'defensePct', label: '% de contrats chutés en défense', unit: '%' },
+  { key: 'pabMade', label: 'Petits au bout réussis', unit: '' },
+  { key: 'poignees', label: 'Poignées', unit: '' },
+  { key: 'winPct', label: '% de victoires', unit: '%', scope: 'career' },
+  { key: 'avgRank', label: 'Place moyenne', unit: 'dec', scope: 'career' },
+  { key: 'score', label: 'Score des joueurs', unit: 'pts', scope: 'game' },
+];
+
+/**
+ * Graphique de la partie : statistique au choix, une courbe par joueur, donne après donne.
+ * ui.gameView = 'game' : statistiques de cette partie seulement ;
+ * 'career' : statistiques de carrière (toutes les parties du groupe), mises à jour à chaque donne.
+ */
+function gameLiveChart(e, tarot) {
+  const rows = e.rows;
+  if (!rows.length) return '';
+  const g = e.game;
+  const d = D();
+  const career = ui.gameView === 'career';
+  const pids = tarot ? g.players : [...g.teams[0], ...g.teams[1]];
+  const avail = (tarot ? GAME_STATS_T : GAME_STATS_C).filter((x) =>
+    (career ? x.scope !== 'game' : x.scope !== 'career') && (!x.five || pids.length === 5));
+  let key = tarot ? ui.gstatT : ui.gstatC;
+  if (!avail.some((x) => x.key === key)) key = avail[0].key;
+  const stat = avail.find((x) => x.key === key);
+  const heads = ['Début de la partie', ...rows.map((r, i) => `Donne ${i + 1}${r.hand.passed ? ' (passée)' : ''}`)];
+  const ticks = ['0', ...rows.map((_, i) => String(i + 1))];
+  const all = heads.map(() => true);
+  let series;
+  let ref = null;
+
+  if (stat.key === 'score') {
+    if (tarot) {
+      series = g.players.map((pid, k) => ({
+        id: pid, name: P(pid).name, color: SERIES_COLORS[k], values: [0, ...rows.map((r) => r.totals[pid])], played: all,
+      }));
+    } else {
+      series = [0, 1].map((ti) => ({
+        id: `t${ti}`, name: TEAM_NAMES[ti], color: ti ? '#d7263d' : '#3a50c2', values: [0, ...rows.map((r) => r.totals[ti])], played: all,
+      }));
+      ref = { value: g.rules.target, label: `Objectif ${g.rules.target}` };
+    }
+  } else {
+    // Statistiques recalculées après chaque donne de la partie
+    const thisHands = rows.map((r) => r.hand);
+    const players = d.players.filter((p) => pids.includes(p.id));
+    const otherHands = career ? (tarot ? d.thands : d.hands).filter((h) => h.gameId !== g.id) : [];
+    const games = career ? (tarot ? d.tgames : d.games) : [g];
+    const snaps = [];
+    for (let k = 0; k <= thisHands.length; k++) {
+      const hs = [...otherHands, ...thisHands.slice(0, k)];
+      // La partie n'est terminée qu'au dernier point (sinon victoires et places bougeraient trop tôt)
+      const gs = games.map((x) => (x.id === g.id && k < thisHands.length ? { ...x, finishedAt: null, winner: null } : x));
+      snaps.push(tarot ? computeTarotStats(players, gs, hs) : computeStats(players, gs, hs));
+    }
+    series = pids.map((pid, k) => ({
+      id: pid, name: P(pid).name, color: SERIES_COLORS[k], values: snaps.map((S) => S.get(pid)?.[stat.key] ?? null), played: all,
+    }));
+  }
+
+  const pctStat = stat.unit === '%';
+  const fmt = pctStat ? (v) => `${Math.round(v)} %` : stat.unit === 'dec' ? (v) => num(v, 1) : (v) => num(v);
+  const model = {
+    title: stat.label, series, heads, ticks, ref, fmt,
+    pct: pctStat, zeroBase: stat.unit === '', invert: stat.key === 'avgRank',
+    empty: 'Les courbes apparaîtront après la première donne.',
+  };
+  ui.bindQueue.push(['.gchart-card', model]);
+  return `<div class="panel gchart-card" style="margin-top:12px">
+    <div class="field" style="margin-top:0"><label for="gchart-stat">Graphique</label>
+      <select class="input" id="gchart-stat" data-gchart>
+        ${avail.map((x) => `<option value="${x.key}" ${x.key === stat.key ? 'selected' : ''}>${x.label}</option>`).join('')}
+      </select></div>
+    ${multiLineChart(model)}
+    <p class="small muted" style="margin:6px 0 0">${stat.key === 'score'
+      ? 'Scores après chaque donne.'
+      : career
+        ? 'Statistiques de carrière (toutes les parties du groupe), recalculées après chaque donne de cette partie.'
+        : 'Statistiques de cette partie seulement, recalculées après chaque donne.'}
+    Touchez la courbe pour lire les valeurs.</p>
+  </div>`;
+}
+
 // ============================================================ GRAPHIQUES
 function chartsPage() {
   const d = D();
@@ -805,8 +941,9 @@ function chartsPage() {
   ui.chartModel = {
     title: stat.label,
     series,
-    heads: tl.points.map((pt, i) => `Partie ${i + 1} du groupe · ${date(pt.t)}`),
-    ticks: tl.points.map((pt) => shortDate(pt.t)),
+    heads: tl.points.map((pt, i) => (pt.live ? 'Partie en cours (provisoire)' : `Partie ${i + 1} du groupe · ${date(pt.t)}`)),
+    ticks: tl.points.map((pt) => (pt.live ? 'direct' : shortDate(pt.t))),
+    live: tl.points.map((pt) => !!pt.live),
     pct: pctStat,
     zeroBase: stat.unit === '',
     invert: lowerIsBetter,
@@ -827,8 +964,9 @@ function chartsPage() {
   </div>
   <div class="panel chart-card" style="margin-top:18px">
     <h3>${stat.label}</h3>
-    <p class="small muted" style="margin:0">Valeur cumulée après chaque partie terminée. Touchez la courbe pour lire les valeurs.</p>
+    <p class="small muted" style="margin:0">Valeur cumulée après chaque partie. Touchez la courbe pour lire les valeurs.</p>
     ${multiLineChart(ui.chartModel)}
+    ${ui.chartModel.live.some(Boolean) ? liveNote() : ''}
   </div>`;
 
   // Tableau des valeurs actuelles (lecture sans graphique)
@@ -961,7 +1099,9 @@ function settingsPage() {
 
     <h2>Ce téléphone</h2>
     <button class="btn light block" style="margin-bottom:10px" data-act="groups">Mes groupes (${store.listGroups().length}) · en ajouter un</button>
-    <p class="small muted" style="margin:-4px 0 10px">Version de l'application : <b>${APP_VERSION}</b></p>
+    <p class="small muted" style="margin:-4px 0 6px">Version de l'application : <b>${APP_VERSION}</b>
+      ${ui.serverBuild ? `<br>Version en ligne : <b>${ui.serverBuild}</b>${ui.serverBuild > APP_BUILD ? ' — mise à jour disponible' : ''}` : ''}</p>
+    ${EMBED ? '' : '<button class="btn light block" style="margin-bottom:10px" data-act="force-update">Forcer la mise à jour de l\'app</button>'}
     <button class="btn danger block" data-act="leave-group">${local ? 'Effacer ce groupe de ce téléphone' : 'Quitter ce groupe sur ce téléphone'}</button>
     <p class="small muted" style="margin-top:8px">${local ? 'Toutes les parties et profils de ce téléphone seront supprimés.' : 'Les données restent sur le serveur : vous pourrez revenir avec le code.'}</p>`;
   return shell('Groupe', body, { active: 'settings' });
@@ -1207,7 +1347,8 @@ function newGameSheet() {
   const full = dr.slots.every(Boolean);
   let html = sheetHead('Nouvelle partie');
   html += `<div class="sheet-body">
-    <p class="small muted" style="margin:0 0 10px">Touchez les joueurs dans l'ordre : les deux premiers forment les Bleus, les deux suivants les Rouges.</p>
+    ${titleField(dr)}
+    <p class="small muted" style="margin:16px 0 10px">Touchez les joueurs dans l'ordre : les deux premiers forment les Bleus, les deux suivants les Rouges.</p>
     <div class="slots">
       <div class="slot-team t0"><h3>Bleus ♠</h3>${slot(0)}${slot(1)}</div>
       <div class="slot-team t1"><h3>Rouges ♥</h3>${slot(2)}${slot(3)}</div>
@@ -1231,8 +1372,8 @@ function newGameSheet() {
   return html;
 }
 
-function startGame(teams, rules) {
-  const id = store.put('game', { teams, rules, startedAt: Date.now(), finishedAt: null, winner: null });
+function startGame(teams, rules, title = '') {
+  const id = store.put('game', { teams, rules, title: title.trim().slice(0, 50), startedAt: Date.now(), finishedAt: null, winner: null });
   closeSheet();
   go(`#/game/${id}`);
 }
@@ -1263,12 +1404,12 @@ function playerSheet() {
 
 // ------------------------------------------------------------ boîte de dialogue
 /** Remplace confirm()/prompt() (bloqués dans certains contextes, et plus lisibles). */
-function ask({ title, message = '', ok = 'Confirmer', danger = false, input = null }) {
+function ask({ title, message = '', ok = 'Confirmer', danger = false, input = null, value = '' }) {
   return new Promise((resolve) => {
     const root = document.getElementById('dialog');
     root.innerHTML = `<div class="scrim in dlg-scrim"><div class="dialog" role="alertdialog" aria-modal="true" aria-label="${esc(title)}">
       <h3>${esc(title)}</h3>${message ? `<p class="small muted">${esc(message)}</p>` : ''}
-      ${input ? `<input class="input" id="dlg-input" placeholder="${esc(input)}" maxlength="30" autocomplete="off">` : ''}
+      ${input ? `<input class="input" id="dlg-input" placeholder="${esc(input)}" maxlength="50" value="${esc(value)}" autocomplete="off">` : ''}
       <div class="row" style="margin-top:14px"><button class="btn light block" data-dlg="0">Annuler</button>
       <button class="btn ${danger ? 'red' : 'gold'} block" data-dlg="1">${esc(ok)}</button></div></div></div>`;
     const inp = root.querySelector('#dlg-input');
@@ -1311,6 +1452,23 @@ function toast(message, action = null) {
 // =====================================================================
 //  TAROT — écrans
 // =====================================================================
+// Niveau des prises : du plus faible au plus fort (rampe de bleus, du clair au foncé)
+const CONTRACT_COLORS = { petite: '#86b6ef', garde: '#3987e5', gardeSans: '#1c5cab', gardeContre: '#0d366b' };
+const CONTRACT_SHORT = { petite: 'P', garde: 'G', gardeSans: 'GS', gardeContre: 'GC' };
+
+/** Barre de répartition des prises par contrat. */
+function contractBar(s) {
+  if (!s.takes) return '<p class="small muted" style="margin:0">Aucune prise pour l\'instant.</p>';
+  const parts = CONTRACT_KEYS.map((c) => ({ c, n: s.byContract[c]?.takes || 0 })).filter((x) => x.n);
+  return `<div class="cbar" role="img" aria-label="${parts.map((x) => `${CONTRACTS[x.c].label} ${Math.round((100 * x.n) / s.takes)} %`).join(', ')}">
+    ${parts.map((x) => {
+      const w = (100 * x.n) / s.takes;
+      return `<span style="width:${w}%;background:${CONTRACT_COLORS[x.c]};color:${x.c === 'petite' ? 'var(--ink)' : '#fff'}">${w >= 14 ? `${Math.round(w)} %` : ''}</span>`;
+    }).join('')}
+  </div>
+  <div class="legend">${CONTRACT_KEYS.map((c) => `<span class="lg"><i style="background:${CONTRACT_COLORS[c]};height:10px;width:10px;border-radius:3px"></i>${CONTRACTS[c].label}</span>`).join('')}</div>`;
+}
+
 const RANK_LABEL = (r) => (r === 1 ? '1ᵉʳ' : `${r}ᵉ`);
 const signed = (v) => (v > 0 ? `+${v}` : `${v}`);
 
@@ -1366,6 +1524,7 @@ function tarotGameCard(e) {
     : tarotProgress(e);
   return `
     <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px">
+      ${titleLine(g)}
       <div class="tcard">
         ${e.order.map((pid) => `<div class="tcard-row">${avatar(P(pid), 's')}<span class="nm">${esc(P(pid).name)}</span>
           <b class="${e.totals[pid] < 0 ? 'neg' : ''}">${e.totals[pid]}</b></div>`).join('')}
@@ -1411,11 +1570,15 @@ function tarotGamePage(id) {
   // Stats des joueurs
   const S = d.tstats;
   const local = {};
-  for (const pid of g.players) local[pid] = { takes: 0, made: 0, called: 0, pab: 0 };
+  for (const pid of g.players) local[pid] = { takes: 0, made: 0, called: 0, pab: 0, byC: {} };
   for (const row of e.rows) {
     const h = row.hand;
     if (h.passed) continue;
-    if (local[h.taker]) { local[h.taker].takes++; if (row.made) local[h.taker].made++; }
+    if (local[h.taker]) {
+      local[h.taker].takes++;
+      if (row.made) local[h.taker].made++;
+      local[h.taker].byC[h.contract] = (local[h.taker].byC[h.contract] || 0) + 1;
+    }
     if (row.partner && local[row.partner]) local[row.partner].called++;
     if (h.pabBy && !h.pabLost && local[h.pabBy]) local[h.pabBy].pab++;
   }
@@ -1429,15 +1592,18 @@ function tarotGamePage(id) {
     let what;
     if (ui.gameView === 'game') {
       const s = local[pid];
-      what = `Prises ${s.made}/${s.takes}${n === 5 ? ` · appelé ${s.called}` : ''}<br>Petits au bout ${s.pab}`;
+      const cs = CONTRACT_KEYS.filter((c) => s.byC[c]).map((c) => `${CONTRACT_SHORT[c]} ${s.byC[c]}`).join(' · ');
+      what = `Prises ${s.made}/${s.takes}${n === 5 ? ` · appelé ${s.called}` : ''}<br>A pris ${s.takes} donne${s.takes > 1 ? 's' : ''} sur ${e.rows.length}${cs ? `<br>Contrats : ${cs}` : ''}<br>Petits au bout ${s.pab}`;
     } else {
       const s = S.get(pid);
-      what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takePct)} · place ${num(s.avgRank, 1)}` : '';
+      what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takePct)} · place ${num(s.avgRank, 1)}<br>Prend ${pct(s.takeRate)} des donnes` : '';
     }
     return `<a class="mini" href="#/player/${pid}" style="text-decoration:none;color:inherit">
       <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
   }).join('');
   body += '</div>';
+
+  body += gameLiveChart(e, true);
 
   body += '<h2>Donnes</h2>';
   if (!e.rows.length) body += '<p class="muted">Aucune donne pour l\'instant. Touchez « Nouvelle donne » après chaque main.</p>';
@@ -1448,11 +1614,12 @@ function tarotGamePage(id) {
   }
   body += `<div style="margin-top:22px" class="row wrap">
       <span class="small muted" style="flex:1">Commencée le ${dateTime(g.startedAt)}</span>
+      <button class="link" data-act="rename-game" data-id="${g.id}">${gameTitle(g) ? 'Renommer' : 'Donner un titre'}</button>
       ${!e.finished && e.played ? `<button class="link" data-act="tfinish" data-id="${g.id}">Terminer la partie</button>` : ''}
       <button class="link" style="color:var(--red)" data-act="delete-game" data-id="${g.id}">Supprimer la partie</button>
     </div>`;
   const fab = e.finished ? '' : `<button class="btn gold block" data-act="new-hand" data-id="${g.id}">Nouvelle donne</button>`;
-  return shell('Partie de tarot', body, { back: '#/', fab, active: 'home' });
+  return shell(esc(gameTitle(g) || 'Partie de tarot'), body, { back: '#/', fab, active: 'home' });
 }
 
 function tarotHandRow(row, n) {
@@ -1490,7 +1657,8 @@ function tarotNewGameSheet() {
   const problem = tarotStartProblem(dr);
   return `${sheetHead('Nouvelle partie de tarot')}
   <div class="sheet-body">
-    <p class="small muted" style="margin:0 0 10px">Touchez 3 à 5 joueurs dans l'ordre où ils sont assis autour de la table : l'app indiquera qui donne.</p>
+    ${titleField(dr)}
+    <p class="small muted" style="margin:16px 0 10px">Touchez 3 à 5 joueurs dans l'ordre où ils sont assis autour de la table : l'app indiquera qui donne.</p>
     <div class="seats">${[0, 1, 2, 3, 4].map((i) => {
       const pid = dr.players[i];
       return `<div class="seat ${pid ? 'filled' : ''}"><span class="seat-n">${i + 1}</span>${pid ? `${avatar(P(pid), 's')}<span>${esc(P(pid).name)}</span>` : `<span class="muted">${i < 3 ? 'Joueur' : 'Facultatif'}</span>`}</div>`;
@@ -1521,8 +1689,8 @@ function tarotNewGameSheet() {
     <button class="btn gold block" data-act="tstart" ${problem ? 'disabled' : ''}>Lancer la partie</button></div>`;
 }
 
-function startTarotGame(players, rules) {
-  const id = store.put('game', { type: 'tarot', players, rules, startedAt: Date.now(), finishedAt: null, endedManually: false });
+function startTarotGame(players, rules, title = '') {
+  const id = store.put('game', { type: 'tarot', players, rules, title: title.trim().slice(0, 50), startedAt: Date.now(), finishedAt: null, endedManually: false });
   closeSheet();
   go(`#/game/${id}`);
 }
@@ -1785,13 +1953,17 @@ function tarotPlayerPage(id, opts = {}) {
       <div class="kpi red"><div class="v">${pct(s.takeFailPct)}</div><div class="l">de chutes</div></div>
     </div>
     <div class="panel" style="margin-top:10px">
-      <table class="vtable"><thead><tr><th>Contrat</th><th class="n">Réussies</th><th class="n">%</th></tr></thead><tbody>
+      <h3 style="margin:0 0 8px">Niveau de ses prises</h3>
+      ${contractBar(s)}
+      <table class="vtable" style="margin-top:12px"><thead><tr><th>Contrat</th><th class="n">Part</th><th class="n">Réussies</th><th class="n">Réussite</th></tr></thead><tbody>
       ${CONTRACT_KEYS.map((c) => {
         const x = s.byContract[c] || { takes: 0, made: 0 };
-        return `<tr><td>${CONTRACTS[c].label}</td><td class="n">${x.made}/${x.takes}</td><td class="n"><b>${pct(x.pct)}</b></td></tr>`;
+        return `<tr><td><span class="who"><i style="background:${CONTRACT_COLORS[c]}"></i>${CONTRACTS[c].label}</span></td>
+          <td class="n"><b>${pct(x.share)}</b> <span class="muted small">(${x.takes})</span></td><td class="n">${x.made}/${x.takes}</td><td class="n">${pct(x.pct)}</td></tr>`;
       }).join('')}
       </tbody></table>
       <dl class="dl" style="margin-top:6px">
+        <dt>Prises sur les donnes jouées</dt><dd>${s.takes}/${s.handsDealt} (${pct(s.takeRate)})</dd>
         <dt>Gain moyen par prise réussie</dt><dd>${num(s.avgGainMade)}</dd>
         <dt>Bouts moyens quand il prend</dt><dd>${num(s.avgBouts, 1)}</dd>
       </dl>
@@ -1826,7 +1998,7 @@ function tarotPlayerPage(id, opts = {}) {
     body += '<h2>Dernières parties</h2><ul class="list">';
     body += mine.map((e) => `<li><a class="item" ${opts.cross ? '' : `href="#/game/${e.game.id}"`} style="text-decoration:none;color:inherit">
         <span class="tag ${e.rank[id] === 1 ? 'ok' : e.rank[id] <= 3 ? 'x2' : 'ko'}" style="margin:0">${RANK_LABEL(e.rank[id])}</span>
-        <span class="main"><span class="t">Tarot à ${e.game.players.length}</span><br><span class="s">${date(e.game.finishedAt)}</span></span>
+        <span class="main"><span class="t">${esc(gameTitle(e.game) || `Tarot à ${e.game.players.length}`)}</span><br><span class="s">${date(e.game.finishedAt)}</span></span>
         <span class="r" style="font-size:17px">${e.totals[id]}</span></a></li>`).join('');
     body += '</ul>';
   }
@@ -1854,7 +2026,7 @@ async function handleTarot(act, el, id) {
       const dr = sh.draft;
       if (tarotStartProblem(dr)) return;
       const rules = { ...D().trules, mode: dr.mode, nHands: dr.nHands, pabTimesK: !!dr.pabTimesK, miseres: !!dr.miseres };
-      return startTarotGame([...dr.players], rules);
+      return startTarotGame([...dr.players], rules, dr.title || '');
     }
     case 'trematch': {
       const g = store.get(id);
@@ -2029,7 +2201,7 @@ async function handle(act, el, id) {
     case 'start-game': {
       const dr = sh.draft;
       const rules = { ...D().rules, target: dr.target, allowSA: dr.allowSA, allowTA: dr.allowTA };
-      return startGame([[dr.slots[0], dr.slots[1]], [dr.slots[2], dr.slots[3]]], rules);
+      return startGame([[dr.slots[0], dr.slots[1]], [dr.slots[2], dr.slots[3]]], rules, dr.title || '');
     }
     case 'rematch': {
       const g = store.get(id);
@@ -2044,6 +2216,14 @@ async function handle(act, el, id) {
     }
     case 'game-view': ui.gameView = el.dataset.v; return render();
     case 'kind': setKind(el.dataset.v); ui.chartSel = null; return render();
+    case 'force-update': return forceUpdate();
+    case 'rename-game': {
+      const g = store.get(id);
+      const t = await ask({ title: 'Titre de la partie', input: 'Ex. Revanche du jeudi', ok: 'Enregistrer', value: g?.title || '' });
+      if (t == null) return;
+      store.patch(id, { title: t.trim().slice(0, 50) });
+      return toast(t.trim() ? 'Titre enregistré' : 'Titre retiré');
+    }
     case 'person': return go(`#/person/${id}`);
     case 'link-open': return openSheet('link', { pid: id });
     case 'link-to':
@@ -2207,6 +2387,7 @@ document.addEventListener('input', (ev) => {
     sheetRoot.querySelectorAll('[data-k="target"]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === dr.target)));
     return;
   }
+  if (k === 'title') { dr.title = el.value; return; }
   if (k === 'name') {
     dr.name = el.value;
     const btn = document.getElementById('save-player');
@@ -2216,6 +2397,10 @@ document.addEventListener('input', (ev) => {
 
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
+  if (el.dataset.gchart !== undefined) {
+    if (store.get(route().id)?.type === 'tarot') ui.gstatT = el.value; else ui.gstatC = el.value;
+    return render();
+  }
   if (el.dataset.pchart !== undefined) {
     if (ui.kind === 'tarot') ui.pchartT = el.value; else ui.pchartC = el.value;
     return render();
@@ -2266,13 +2451,13 @@ document.addEventListener('keydown', (ev) => {
 // ============================================================ EXPORTS
 function exportStats() {
   const d = D();
-  const header = ['Joueur', 'Parties', 'Victoires', '% victoires', '% défaites', 'Prises', 'Prises réussies', '% réussite', '% chute',
+  const header = ['Joueur', 'Parties', 'Victoires', '% victoires', '% défaites', 'Donnes jouées', '% prises sur les donnes', 'Prises', 'Prises réussies', '% réussite', '% chute',
     'Prises solo', 'Prises solo réussies', 'Prises partagées', 'Prises partagées réussies',
     'Points moyens / contrat réussi', 'Annonce moyenne', 'Capots', 'Générales', 'Contres', 'Contres réussis', 'Surcontres', 'Surcontres réussis',
     'Belotes', '% chutes infligées en défense', 'Meilleur partenaire', 'Adversaire redouté'];
   const rows = d.players.map((p) => {
     const s = d.stats.get(p.id);
-    return [p.name, s.games, s.wins, s.winPct, s.lossPct, s.takes, s.takesMade, s.takeMadePct, s.takeFailPct,
+    return [p.name, s.games, s.wins, s.winPct, s.lossPct, s.handsDealt, s.takeRate, s.takes, s.takesMade, s.takeMadePct, s.takeFailPct,
       s.soloTakes, s.soloMade, s.sharedTakes, s.sharedMade,
       s.avgPointsMade, s.avgBid, s.capots, s.generales, s.coinches, s.coinchesWon, s.surcoinches, s.surcoinchesWon,
       s.belotes, s.defensePct, s.bestPartner ? P(s.bestPartner.id).name : '', s.nemesis ? P(s.nemesis.id).name : ''];
@@ -2282,13 +2467,13 @@ function exportStats() {
 
 function exportHands() {
   const d = D();
-  const header = ['Partie', 'Date', 'Donne', 'Bleus', 'Rouges', 'Preneur', 'Prise partagée', 'Annonce', 'Couleur', 'Contre', 'Surcontre',
+  const header = ['Partie', 'Titre', 'Date', 'Donne', 'Bleus', 'Rouges', 'Preneur', 'Prise partagée', 'Annonce', 'Couleur', 'Contre', 'Surcontre',
     'Points attaque', 'Capot', 'Belote', 'Résultat', 'Points Bleus', 'Points Rouges', 'Total Bleus', 'Total Rouges'];
   const rows = [];
   [...d.evaluated].reverse().forEach((e, gi) => {
     e.rows.forEach((r, i) => {
       const h = r.hand;
-      rows.push([gi + 1, dateTime(e.game.startedAt), i + 1,
+      rows.push([gi + 1, gameTitle(e.game), dateTime(e.game.startedAt), i + 1,
         e.game.teams[0].map((x) => P(x).name).join(' & '), e.game.teams[1].map((x) => P(x).name).join(' & '),
         h.passed ? '' : P(h.taker).name, h.shared ? 'oui' : '', h.passed ? 'passe' : bidLabel(h.bid), h.passed ? '' : SUITS[h.suit]?.label,
         h.coincheBy ? P(h.coincheBy).name : '', h.surcoincheBy ? P(h.surcoincheBy).name : '',
@@ -2302,13 +2487,13 @@ function exportHands() {
 function exportTarotStats() {
   const d = D();
   const header = ['Joueur', 'Parties', 'Victoires', '% victoires', 'Podiums', '% podiums', 'Place moyenne', 'Score final moyen',
-    'Prises', 'Prises réussies', '% réussite', ...CONTRACT_KEYS.flatMap((c) => [`${CONTRACTS[c].label} tentées`, `${CONTRACTS[c].label} réussies`]),
+    'Donnes jouées', '% prises sur les donnes', 'Prises', 'Prises réussies', '% réussite', ...CONTRACT_KEYS.flatMap((c) => [`${CONTRACTS[c].label} tentées`, `${CONTRACTS[c].label} réussies`]),
     'Gain moyen / prise réussie', 'Bouts moyens', 'Appelé', 'Réussites comme appelé', 'Appelé lui-même',
     '% chutes en défense', 'Petits au bout réussis', 'Petits pris', 'Poignées', 'Chelems', 'Misères', 'Meilleur partenaire (à 5)'];
   const rows = d.players.map((p) => {
     const s = d.tstats.get(p.id);
     return [p.name, s.games, s.wins, s.winPct, s.podiums, s.podiumPct, s.avgRank, s.avgFinal,
-      s.takes, s.takesMade, s.takePct, ...CONTRACT_KEYS.flatMap((c) => [s.byContract[c]?.takes ?? 0, s.byContract[c]?.made ?? 0]),
+      s.handsDealt, s.takeRate, s.takes, s.takesMade, s.takePct, ...CONTRACT_KEYS.flatMap((c) => [s.byContract[c]?.takes ?? 0, s.byContract[c]?.made ?? 0]),
       s.avgGainMade, s.avgBouts, s.called, s.calledMade, s.selfCalls,
       s.defensePct, s.pabMade, s.pabLost, s.poignees, s.chelems, s.miseres, s.bestPartner ? P(s.bestPartner.id).name : ''];
   });
@@ -2317,14 +2502,14 @@ function exportTarotStats() {
 
 function exportTarotHands() {
   const d = D();
-  const header = ['Partie', 'Date', 'Donne', 'Joueurs', 'Preneur', 'Contrat', 'Appelé', 'Bouts', 'Points attaque', 'Résultat',
+  const header = ['Partie', 'Titre', 'Date', 'Donne', 'Joueurs', 'Preneur', 'Contrat', 'Appelé', 'Bouts', 'Points attaque', 'Résultat',
     'Petit au bout', 'Poignées', 'Chelem', 'Misères', 'Points (par joueur)', 'Totaux'];
   const rows = [];
   [...d.tevaluated].reverse().forEach((e, gi) => {
     e.rows.forEach((r, i) => {
       const h = r.hand;
       const names = (o) => e.game.players.map((pid) => `${P(pid).name} ${o[pid]}`).join(' | ');
-      rows.push([gi + 1, dateTime(e.game.startedAt), i + 1, e.game.players.map((x) => P(x).name).join(', '),
+      rows.push([gi + 1, gameTitle(e.game), dateTime(e.game.startedAt), i + 1, e.game.players.map((x) => P(x).name).join(', '),
         h.passed ? '' : P(h.taker).name, h.passed ? 'passe' : CONTRACTS[h.contract]?.label, r.partner ? P(r.partner).name : '',
         h.bouts, h.attackPoints, h.passed ? '' : r.made ? 'réussi' : 'chuté',
         h.pabBy ? `${P(h.pabBy).name}${h.pabLost ? ' (pris)' : ''}` : '',
@@ -2334,6 +2519,44 @@ function exportTarotHands() {
     });
   });
   download('fous-tarot-donnes.csv', toCsv(header, rows));
+}
+
+// ============================================================ MISES À JOUR
+/**
+ * Vide la mémoire de l'app (fichiers en cache + service worker) puis recharge :
+ * le téléphone télécharge alors la dernière version mise en ligne.
+ * Les données (parties, joueurs) ne sont pas touchées.
+ */
+async function forceUpdate() {
+  if (store.getState().dirty.length) await store.sync(true);
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+    await Promise.all(regs.map((r) => r.unregister()));
+    const keys = (await caches?.keys?.()) || [];
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch (e) { console.warn(e); }
+  location.reload();
+}
+
+/** Compare la version installée avec celle en ligne (numéro dans sw.js). */
+async function checkServerVersion() {
+  if (EMBED || (location.protocol !== 'https:' && location.hostname !== 'localhost')) return;
+  try {
+    const txt = await (await fetch(`sw.js?check=${Date.now()}`, { cache: 'no-store' })).text();
+    const m = txt.match(/fdc-v(\d+)/);
+    if (!m) return;
+    ui.serverBuild = Number(m[1]);
+    if (ui.serverBuild > APP_BUILD) showUpdateBanner();
+  } catch { /* hors ligne */ }
+}
+
+function showUpdateBanner() {
+  if (document.getElementById('upd')) return;
+  const el = document.createElement('div');
+  el.id = 'upd';
+  el.className = 'upd-banner';
+  el.innerHTML = `<span>Une nouvelle version de l'app est en ligne.</span><button data-act="force-update">Mettre à jour</button>`;
+  document.body.appendChild(el);
 }
 
 // ============================================================ DÉMARRAGE
@@ -2384,6 +2607,8 @@ if (!EMBED && location.hash.startsWith('#join=')) handleJoinLink();
 else render();
 store.startPolling();
 store.sync(true);
+checkServerVersion();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkServerVersion(); });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.CONTREE_NO_SW) {
   // updateViaCache 'none' : le téléphone vérifie toujours si sw.js a changé

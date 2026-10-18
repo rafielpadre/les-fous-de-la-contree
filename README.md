@@ -101,7 +101,12 @@ L'icône « Fous Contrée » apparaît alors comme une application normale.
 - La partie se termine automatiquement quand une équipe atteint le score. Si les deux le dépassent sur la même donne, la plus haute gagne. En cas d'égalité parfaite, on continue.
 - Pendant une partie, le bloc **Joueurs** affiche au choix les stats de la partie ou celles de la carrière.
 - Les autres téléphones voient les scores se mettre à jour toutes les 4 secondes pendant une partie.
-- **Onglet Graphiques** : choisissez une statistique dans la liste et touchez les joueurs à comparer (8 au maximum). Une courbe par joueur montre la valeur cumulée après chaque partie terminée du groupe. Touchez la courbe pour lire les valeurs de tous les joueurs à cette partie. Le tableau « Aujourd'hui » donne les valeurs actuelles.
+- **Titre de partie** (facultatif) : à la création d'une partie, ou plus tard avec « Donner un titre / Renommer » en bas de l'écran de la partie. Il s'affiche en haut de la partie, dans les listes, les profils et les exports.
+- **% de prises sur les donnes jouées** : nombre de prises du joueur divisé par le nombre de donnes distribuées pendant qu'il était à la table (donnes « tous passent » comprises). Exemple : 2 prises sur 8 donnes = 25 %. Disponible pour la partie en cours, dans le profil (carrière), dans les graphiques et l'export.
+- **Mise à jour** : si une version plus récente est en ligne, un bandeau « Mettre à jour » apparaît. Le bouton **Groupe → Forcer la mise à jour de l'app** vide la mémoire de l'app et recharge la dernière version (les parties et joueurs ne sont pas touchés).
+- **Pendant une partie** (contrée et tarot), un graphique sous les cartes des joueurs suit une statistique au choix, une courbe par joueur, recalculée après chaque donne : % de prises réussies, prises réussies, points moyens par contrat réussi (contrée) ou gain moyen par prise (tarot), contres, belotes, petits au bout, score… Le bouton « Cette partie | Carrière » choisit entre les statistiques de la partie seule et celles de toute la carrière.
+- **Graphiques en direct** : dans l'onglet Graphiques et dans les profils, la partie en cours apparaît comme dernier point, en pointillés (provisoire). Les prises, contres, belotes, etc. y sont comptés tout de suite ; les victoires, places et podiums ne comptent qu'à la fin de la partie.
+- **Onglet Graphiques** : choisissez une statistique dans la liste et touchez les joueurs à comparer (8 au maximum). Une courbe par joueur montre la valeur cumulée après chaque partie du groupe. Touchez la courbe pour lire les valeurs de tous les joueurs à cette partie. Le tableau « Aujourd'hui » donne les valeurs actuelles.
 
 ## Règles de comptage
 
@@ -196,7 +201,7 @@ La somme *D* de ces éléments est retirée à chaque défenseur. Le preneur gag
 
 **Statistiques tarot :**
 - parties, victoires, podiums, place moyenne, score final moyen et meilleur score ;
-- prises réussies au total et par contrat, gain moyen par prise réussie, bouts moyens ;
+- prises réussies au total et par contrat, **niveau des prises** (part de Petites, Gardes, Gardes sans et Gardes contre parmi ses prises, avec une barre de répartition), gain moyen par prise réussie, bouts moyens ;
 - à 5 : fois appelé, réussite comme appelé, fois appelé lui-même, meilleur partenaire ;
 - % de contrats chutés en défense ;
 - petits au bout, poignées, chelems et misères ;
@@ -226,7 +231,7 @@ Pour éviter la pause, le fichier `.github/workflows/keepalive.yml` envoie une r
 | Badge « Erreur » rouge en haut | Touchez-le pour réessayer. Vérifiez l'URL et la clé dans `config.js`. |
 | « Serveur non configuré » | Le script `schema.sql` n'a pas été exécuté entièrement. |
 | « Code de groupe inconnu » | Code mal recopié : il n'y a ni 0, ni O, ni 1, ni I dans les codes. |
-| L'app n'a pas pris une modification | Changez `VERSION` dans `sw.js`, puis fermez et rouvrez l'app. |
+| L'app n'a pas pris une modification | Vérifiez le numéro en bas de l'onglet Groupe, puis touchez « Forcer la mise à jour de l'app ». |
 | Serveur injoignable depuis plusieurs jours | Projet Supabase en pause : cliquez **Restore** sur sa page. |
 
 ## Mode local

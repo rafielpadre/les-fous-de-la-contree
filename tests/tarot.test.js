@@ -117,3 +117,42 @@ test('statistiques tarot', async () => {
   assert.equal(tl.series.a[0].winPct, 100);
   assert.equal(tl.series.c[0].calledPct, 100);
 });
+
+test('évolution tarot : partie en cours en direct', async () => {
+  const { tarotTimeline } = await import('../js/tarot-stats.js');
+  const players = P4.map((id) => ({ id, name: id }));
+  const g = { id: 'g', type: 'tarot', players: P4, rules: { mode: 'hands', nHands: 10 }, startedAt: 1 };
+  const tl = tarotTimeline(players, [g], [{ gameId: 'g', idx: 0, taker: 'a', contract: 'garde', bouts: 2, attackPoints: 47 }]);
+  assert.equal(tl.points.length, 1);
+  assert.equal(tl.points[0].live, true);
+  assert.equal(tl.series.a[0].takePct, 100);
+  assert.equal(tl.series.a[0].games, 0);
+});
+
+test('tarot : % de prises sur les donnes jouées', async () => {
+  const { computeTarotStats } = await import('../js/tarot-stats.js');
+  const players = P4.map((id) => ({ id, name: id }));
+  const g = { id: 'g', type: 'tarot', players: P4, rules: { mode: 'free' }, startedAt: 1 };
+  const hs = [
+    { gameId: 'g', idx: 0, taker: 'a', contract: 'petite', bouts: 1, attackPoints: 55 },
+    { gameId: 'g', idx: 1, passed: true },
+    { gameId: 'g', idx: 2, taker: 'b', contract: 'petite', bouts: 1, attackPoints: 55 },
+    { gameId: 'g', idx: 3, taker: 'b', contract: 'garde', bouts: 2, attackPoints: 30 },
+  ];
+  const S = computeTarotStats(players, [g], hs);
+  assert.equal(S.get('a').takeRate, 25);
+  assert.equal(S.get('b').takeRate, 50);
+});
+
+test('tarot : part de chaque contrat dans les prises', async () => {
+  const { computeTarotStats } = await import('../js/tarot-stats.js');
+  const players = P4.map((id) => ({ id, name: id }));
+  const g = { id: 'g', type: 'tarot', players: P4, rules: { mode: 'free' }, startedAt: 1 };
+  const hs = ['petite', 'petite', 'garde', 'gardeSans'].map((c, i) => ({ gameId: 'g', idx: i, taker: 'a', contract: c, bouts: 1, attackPoints: 55 }));
+  const a = computeTarotStats(players, [g], hs).get('a');
+  assert.equal(a.sharePetite, 50);
+  assert.equal(a.shareGarde, 25);
+  assert.equal(a.shareGardeSans, 25);
+  assert.equal(a.shareGardeContre, 0);
+  assert.equal(a.byContract.petite.share, 50);
+});
