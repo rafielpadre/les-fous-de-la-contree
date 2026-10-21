@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 13;   // doit correspondre à 'fdc-v13' dans sw.js
-const APP_VERSION = `${APP_BUILD} — renommer un groupe`;
+const APP_BUILD = 14;   // doit correspondre à 'fdc-v14' dans sw.js
+const APP_VERSION = `${APP_BUILD} — reprendre des joueurs d'un autre groupe`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -330,6 +330,7 @@ function homePage() {
         <h2 style="margin-top:14px">Créez les profils des joueurs</h2>
         <p class="muted">Il faut au moins 4 joueurs pour lancer une partie. Chaque profil garde ses statistiques sur la durée.</p>
         <button class="btn block" data-act="add-player">Ajouter un joueur</button>
+        ${importButton('btn light block" style="margin-top:10px')}
       </div>`;
     return shell(esc(store.getState().group.name), body, { active: 'home', groupSwitch: true });
   }
@@ -514,8 +515,10 @@ function handRow(row, n, teams) {
 function playersPage() {
   const d = D();
   let body = kindSwitch();
+  const imp = importButton();
+  if (imp) body += `<div style="margin-top:12px">${imp}</div>`;
   if (!d.players.length) {
-    body = '<p class="muted">Aucun joueur pour l\'instant.</p>';
+    body += '<p class="muted">Aucun joueur pour l\'instant.</p>';
   } else {
     body += '<ul class="list" style="margin-top:14px">';
     const order = [...d.players].sort((a, b) => {
@@ -712,6 +715,81 @@ function personPage(personId) {
   } finally {
     pMap = null;
   }
+}
+
+// ---------- Feuille : reprendre des joueurs d'un autre groupe
+/**
+ * Joueurs des autres groupes du téléphone qu'on peut reprendre dans le groupe affiché.
+ * Une même personne (fiches déjà reliées) n'apparaît qu'une fois.
+ * Statut : 'new' (sera créée), 'same' (un joueur du même nom existe ici : il sera relié),
+ * 'here' (déjà dans ce groupe).
+ */
+function importCandidates() {
+  const cur = store.getState().group?.id;
+  const here = D().players;
+  const herePersons = new Set(here.map((p) => p.personId).filter(Boolean));
+  const seen = new Set();
+  const out = [];
+  for (const g of store.listGroups()) {
+    if (g.id === cur) continue;
+    const players = store.listIn(g.id, 'player').sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    const rows = [];
+    for (const q of players) {
+      if (q.personId && seen.has(q.personId)) continue;
+      if (q.personId) seen.add(q.personId);
+      const same = here.find((p) => p.name.trim().toLowerCase() === q.name.trim().toLowerCase());
+      const status = q.personId && herePersons.has(q.personId) ? 'here' : same ? 'same' : 'new';
+      rows.push({ key: `${g.id}:${q.id}`, gid: g.id, q, status });
+    }
+    if (rows.length) out.push({ group: g, rows });
+  }
+  return out;
+}
+const hasImportable = () => importCandidates().some((x) => x.rows.some((r) => r.status !== 'here'));
+const importButton = (cls = 'btn light block') => (hasImportable()
+  ? `<button class="${cls}" data-act="import-open">Reprendre des joueurs d'un autre groupe</button>` : '');
+
+function importSheet() {
+  const sel = ui.sheet.draft.sel;
+  const groups = importCandidates();
+  let html = `${sheetHead('Reprendre des joueurs')}<div class="sheet-body">
+    <p class="small muted" style="margin:0 0 6px">Touchez les joueurs à ajouter à <b>${esc(store.getState().group.name)}</b>.
+    Leur fiche sera reliée à celle de l'autre groupe : même photo, et « Toutes ses stats » additionne les deux groupes.
+    Les statistiques de chaque groupe restent séparées.</p>`;
+  for (const { group, rows } of groups) {
+    const free = rows.filter((r) => r.status !== 'here');
+    const allOn = free.length && free.every((r) => sel.includes(r.key));
+    html += `<div class="field"><span class="lab" style="display:flex;justify-content:space-between;align-items:baseline">${esc(group.name)}
+      ${free.length ? `<button class="link" data-act="import-all" data-g="${group.id}">${allOn ? 'Aucun' : 'Tous'}</button>` : ''}</span><div class="pick">`;
+    html += rows.map((r) => {
+      if (r.status === 'here') return `<button disabled aria-pressed="false" title="Déjà dans ce groupe">${avatar(r.q, 's')}${esc(r.q.name)} ✓</button>`;
+      const on = sel.includes(r.key);
+      return `<button data-act="import-toggle" data-v="${r.key}" aria-pressed="${on}">${avatar(r.q, 's')}${esc(r.q.name)}${r.status === 'same' ? ' <small>(relier)</small>' : ''}</button>`;
+    }).join('');
+    html += '</div></div>';
+  }
+  html += `<p class="small muted" style="margin-top:16px">✓ : déjà dans ce groupe. « relier » : un joueur du même nom existe déjà ici ; sa fiche sera reliée au lieu d'en créer une deuxième.</p></div>
+    <div class="sheet-foot"><button class="btn gold block" data-act="import-do" ${sel.length ? '' : 'disabled'}>${sel.length ? `Ajouter ${sel.length} joueur${sel.length > 1 ? 's' : ''}` : 'Choisissez des joueurs'}</button></div>`;
+  return html;
+}
+
+/** Crée (ou relie) dans le groupe affiché les fiches choisies des autres groupes. */
+function importPlayers(keys) {
+  let created = 0, linked = 0;
+  for (const key of keys) {
+    const [gid, qid] = key.split(':');
+    const q = store.listIn(gid, 'player').find((x) => x.id === qid);
+    if (!q) continue;
+    const here = D().players;
+    if (q.personId && here.some((p) => p.personId === q.personId)) continue;   // déjà là
+    const same = here.find((p) => p.name.trim().toLowerCase() === q.name.trim().toLowerCase());
+    if (same) { linkProfiles(same.id, gid, qid); linked++; continue; }
+    const personId = q.personId || store.uuid();
+    if (!q.personId) store.patchIn(gid, qid, { personId });
+    store.put('player', { name: q.name, photo: q.photo || null, personId, createdAt: Date.now() });
+    created++;
+  }
+  return { created, linked };
 }
 
 // ---------- Feuille : relier une fiche à d'autres groupes
@@ -1246,7 +1324,7 @@ function renderSheet(opening = false) {
   const { kind } = ui.sheet;
   const html = kind === 'hand' ? handSheet() : kind === 'newGame' ? newGameSheet() : kind === 'player' ? playerSheet()
     : kind === 'thand' ? tarotHandSheet() : kind === 'tnewGame' ? tarotNewGameSheet()
-    : kind === 'link' ? linkSheet() : kind === 'groups' ? groupsSheet() : '';
+    : kind === 'link' ? linkSheet() : kind === 'groups' ? groupsSheet() : kind === 'import' ? importSheet() : '';
   sheetRoot.innerHTML = `<div class="scrim ${opening ? 'in' : ''}" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
   document.body.style.overflow = 'hidden';
   const body = sheetRoot.querySelector('.sheet-body');
@@ -1600,6 +1678,7 @@ function tarotHomePage() {
         <div class="big tarot-big">21</div>
         <h2 style="margin-top:14px">Pas de partie de tarot en cours</h2>
         <p class="muted">${d.players.length < 3 ? `Ajoutez encore ${3 - d.players.length} joueur${d.players.length === 2 ? '' : 's'} pour jouer (3 à 5 joueurs).` : 'De 3 à 5 joueurs, avec le barème de la Fédération.'}</p>
+        ${d.players.length < 3 ? importButton('btn light block" style="margin-top:10px') : ''}
       </div>`;
   }
   const ranked = tarotRankPlayers().slice(0, 5);
@@ -1988,6 +2067,8 @@ function showTarotWin(game, res) {
 function tarotPlayersPage() {
   const d = D();
   let body = kindSwitch();
+  const imp = importButton();
+  if (imp) body += `<div style="margin-top:12px">${imp}</div>`;
   if (!d.players.length) body += '<p class="muted">Aucun joueur pour l\'instant.</p>';
   else {
     const order = [...d.players].sort((a, b) => {
@@ -2346,6 +2427,28 @@ async function handle(act, el, id) {
     }
     case 'person': return go(`#/person/${id}`);
     case 'link-open': return openSheet('link', { pid: id });
+    case 'import-open': return openSheet('import', { sel: [] });
+    case 'import-toggle': {
+      const k = el.dataset.v;
+      sh.draft.sel = sh.draft.sel.includes(k) ? sh.draft.sel.filter((x) => x !== k) : [...sh.draft.sel, k];
+      return renderSheet();
+    }
+    case 'import-all': {
+      const grp = importCandidates().find((x) => x.group.id === el.dataset.g);
+      const keys = (grp?.rows || []).filter((r) => r.status !== 'here').map((r) => r.key);
+      const allOn = keys.every((k) => sh.draft.sel.includes(k));
+      sh.draft.sel = allOn ? sh.draft.sel.filter((k) => !keys.includes(k)) : [...new Set([...sh.draft.sel, ...keys])];
+      return renderSheet();
+    }
+    case 'import-do': {
+      const { created, linked } = importPlayers(sh.draft.sel);
+      closeSheet();
+      render();
+      const parts = [];
+      if (created) parts.push(`${created} joueur${created > 1 ? 's' : ''} ajouté${created > 1 ? 's' : ''}`);
+      if (linked) parts.push(`${linked} fiche${linked > 1 ? 's' : ''} reliée${linked > 1 ? 's' : ''}`);
+      return toast(parts.join(' · ') || 'Rien à ajouter');
+    }
     case 'link-to':
       linkProfiles(sh.draft.pid, el.dataset.g, el.dataset.v);
       toast('Profils reliés');

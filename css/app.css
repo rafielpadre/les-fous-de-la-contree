@@ -606,3 +606,5 @@ p { margin: 0 0 10px; }
 .gname-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .gname-row h2 { min-width: 0; overflow-wrap: anywhere; }
 .gname-row .link { flex: none; }
+.pick button:disabled { opacity: .5; }
+.pick button small { font-weight: 400; color: var(--muted); }

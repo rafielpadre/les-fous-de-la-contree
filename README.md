@@ -175,6 +175,8 @@ Un même téléphone peut suivre **plusieurs groupes**, par exemple un groupe av
 
 Chaque groupe garde ses propres profils, parties, classements et graphiques. Rien ne change pour jouer : un profil reste une simple fiche que n'importe qui peut créer en quelques secondes.
 
+**Reprendre des joueurs d'un autre groupe.** Dans le nouveau groupe, onglet **Joueurs** (ou l'écran d'accueil s'il n'y a encore personne), touchez **Reprendre des joueurs d'un autre groupe**. Choisissez les joueurs (ou **Tous** pour un groupe entier), puis **Ajouter**. Chaque joueur repris reçoit une fiche dans ce groupe, déjà reliée à celle de l'autre groupe : même photo et « Toutes ses stats » additionne les groupes. Ses statistiques ne sont pas recopiées : chaque groupe compte les siennes. Si un joueur du même nom existe déjà dans le groupe (« relier »), sa fiche est reliée au lieu d'en créer une deuxième. Le bouton n'apparaît que si le téléphone suit au moins deux groupes.
+
 **Relier des fiches (facultatif).** Dans le profil d'un joueur, touchez **Relier à un autre groupe**, puis sa fiche dans chacun de vos autres groupes. N'importe qui ayant accès aux deux groupes peut le faire ; l'intéressé n'a pas besoin d'être là. Ensuite :
 - sa **photo** est la même partout (la changer dans un groupe la change dans les autres) ;
 - le bouton **Toutes ses stats** affiche ses statistiques additionnées sur tous les groupes reliés, contrée et tarot, avec les courbes d'évolution. Exemple : 4 victoires sur 9 parties dans un groupe et 2 sur 5 dans l'autre donnent 6 sur 14, soit 43 %.
