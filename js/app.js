@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 11;   // doit correspondre à 'fdc-v11' dans sw.js
-const APP_VERSION = `${APP_BUILD} — niveau des prises au tarot`;
+const APP_BUILD = 13;   // doit correspondre à 'fdc-v13' dans sw.js
+const APP_VERSION = `${APP_BUILD} — renommer un groupe`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -201,8 +201,8 @@ if (EMBED) {
 }
 function route() {
   const h = currentHash().replace(/^#\/?/, '');
-  const [name, id] = h.split('/');
-  return { name: name || 'home', id };
+  const [name, id, id2] = h.split('/');
+  return { name: name || 'home', id, id2 };
 }
 window.addEventListener('hashchange', () => {
   if (location.hash.startsWith('#join=')) return handleJoinLink();
@@ -224,7 +224,14 @@ function render() {
     case 'person': page = personPage(r.id); break;
     case 'game': page = store.get(r.id)?.type === 'tarot' ? tarotGamePage(r.id) : gamePage(r.id); break;
     case 'players': page = ui.kind === 'tarot' ? tarotPlayersPage() : playersPage(); break;
-    case 'player': page = ui.kind === 'tarot' ? tarotPlayerPage(r.id) : playerPage(r.id); break;
+    case 'player': {
+      // #/player/<joueur>/<partie> : carrière ouverte depuis une partie
+      const opts = r.id2 ? { fromGame: r.id2, back: `#/game/${r.id2}` } : {};
+      if (r.id2 && store.get(r.id2)) setKind(store.get(r.id2).type === 'tarot' ? 'tarot' : 'contree');
+      page = ui.kind === 'tarot' ? tarotPlayerPage(r.id, opts) : playerPage(r.id, opts);
+      break;
+    }
+    case 'gplayer': page = gamePlayerPage(r.id, r.id2); break;
     case 'history': page = historyPage(); break;
     case 'charts': page = chartsPage(); break;
     case 'settings': page = settingsPage(); break;
@@ -451,7 +458,7 @@ function gamePage(id) {
       const s = d.stats.get(pid);
       what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takeMadePct)} · Contres ${pct(s.coinchePct)}<br>Prend ${pct(s.takeRate)} des donnes` : '';
     }
-    return `<a class="mini t${ti}" href="#/player/${pid}" style="text-decoration:none;color:inherit">
+    return `<a class="mini t${ti}" href="#/gplayer/${g.id}/${pid}" style="text-decoration:none;color:inherit">
       <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
   }).join('');
   body += '</div>';
@@ -554,12 +561,12 @@ function playerPage(id, opts = {}) {
     <div class="hero felt">
       ${avatar(p, 'l')}
       <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
-        <p>${s.games} partie${s.games > 1 ? 's' : ''} · ${s.handsPlayed} donnes jouées</p>
+        <p>${opts.game ? `${esc(gameTitle(opts.game) || 'Cette partie')} · ${s.handsDealt} donne${s.handsDealt > 1 ? 's' : ''}` : `${s.games} partie${s.games > 1 ? 's' : ''} · ${s.handsPlayed} donnes jouées`}</p>
         ${profileActions(p, opts)}
       </div>
     </div>
-    <div style="margin-top:14px">${kindSwitch()}</div>
-
+    <div style="margin-top:14px">${scopeOrKindSwitch(id, opts)}</div>
+    ${opts.game ? gameSummary(d, id, false) : `
     <h2>Parties</h2>
     <div class="kpis">
       <div class="kpi blue"><div class="v">${pct(s.winPct)}</div><div class="l">de victoires</div></div>
@@ -569,7 +576,7 @@ function playerPage(id, opts = {}) {
     <div class="panel" style="margin-top:10px"><dl class="dl">
       <dt>Série en cours</dt><dd>${streak}</dd>
       <dt>Meilleure série de victoires</dt><dd>${s.bestStreak || '–'}</dd>
-    </dl></div>
+    </dl></div>`}
 
     <h2>Prises</h2>
     <div class="kpis">
@@ -598,6 +605,11 @@ function playerPage(id, opts = {}) {
       <div class="kpi gold"><div class="v">${s.surcoinchesWon}/${s.surcoinches}</div><div class="l">surcontres réussis</div></div>
       <div class="kpi blue"><div class="v">${pct(s.defensePct)}</div><div class="l">chutes infligées en défense</div></div>
     </div>`;
+
+  if (opts.game) {
+    body += playerGameChart(id, opts.game, d, false);
+    return shell('Cette partie', body, { back: opts.back, active: 'home' });
+  }
 
   // Duos
   const partnerRows = Object.entries(s.partners).sort((a, b) => b[1].games - a[1].games);
@@ -644,6 +656,7 @@ function profileActions(p, opts) {
     const groups = opts.groups || [];
     return `<p class="small" style="margin-top:6px">${groups.length} groupe${groups.length > 1 ? 's' : ''} : ${groups.map((g) => esc(g.name)).join(', ')}</p>`;
   }
+  if (opts.game) return '';   // fiche d'une partie : on reste léger (Modifier/Relier sont dans la carrière)
   let html = `<button ${btn} data-act="edit-player" data-id="${p.id}">Modifier</button>`;
   const linked = linkedProfiles(p.personId);
   if (store.listGroups().length > 1) {
@@ -909,6 +922,99 @@ function gameLiveChart(e, tarot) {
   </div>`;
 }
 
+// ============================================================ STATS D'UN JOUEUR POUR UNE PARTIE
+/** Fiche d'un joueur calculée uniquement sur une partie (même présentation que la carrière). */
+function gamePlayerPage(gid, pid) {
+  const g = store.get(gid);
+  if (!g) return shell('Partie', '<p class="muted">Cette partie n\'existe plus.</p>', { back: '#/' });
+  const tarot = g.type === 'tarot';
+  setKind(tarot ? 'tarot' : 'contree');
+  const d = D();
+  const ctx = buildData(d.players, [g], d.byGame.get(gid) || []);
+  const opts = { ctx, game: g, back: `#/game/${gid}` };
+  return tarot ? tarotPlayerPage(pid, opts) : playerPage(pid, opts);
+}
+
+/** En haut d'une fiche : « Cette partie | Carrière » si on vient d'une partie, sinon Contrée | Tarot. */
+function scopeOrKindSwitch(pid, opts) {
+  const gid = opts.game?.id || opts.fromGame;
+  if (!gid) return opts.cross ? kindSwitch() : kindSwitch();
+  return `<div class="kind-switch" role="group" aria-label="Période">
+    <a href="#/gplayer/${gid}/${pid}" role="button" aria-pressed="${!!opts.game}">Cette partie</a>
+    <a href="#/player/${pid}/${gid}" role="button" aria-pressed="${!opts.game}">Carrière</a>
+  </div>`;
+}
+
+/** Résumé de la partie pour ce joueur (remplace le bloc « Parties » de la carrière). */
+function gameSummary(ctx, pid, tarot) {
+  const e = tarot ? ctx.tevaluated[0] : ctx.evaluated[0];
+  if (!e) return '';
+  if (tarot) {
+    const status = e.finished ? (e.rank[pid] === 1 ? 'Gagnée' : 'Terminée') : 'En cours';
+    return `<h2>La partie</h2>
+      <div class="kpis">
+        <div class="kpi blue"><div class="v">${RANK_LABEL(e.rank[pid])}</div><div class="l">${e.finished ? 'place finale' : 'place actuelle'}</div></div>
+        <div class="kpi ${e.totals[pid] < 0 ? 'red' : 'green'}"><div class="v">${signed(e.totals[pid])}</div><div class="l">points</div></div>
+        <div class="kpi"><div class="v">${e.played}</div><div class="l">donnes jouées</div></div>
+      </div>
+      <div class="panel" style="margin-top:10px"><dl class="dl">
+        <dt>Statut</dt><dd>${status}</dd>
+        <dt>Tarot à</dt><dd>${e.game.players.length} joueurs</dd>
+        <dt>Commencée le</dt><dd>${dateTime(e.game.startedAt)}</dd>
+      </dl></div>`;
+  }
+  const ti = teamOf(e.game.teams, pid);
+  const partner = e.game.teams[ti].find((x) => x !== pid);
+  const status = e.winner === null ? 'En cours' : e.winner === ti ? 'Gagnée' : 'Perdue';
+  return `<h2>La partie</h2>
+    <div class="kpis">
+      <div class="kpi ${ti ? 'red' : 'blue'}"><div class="v">${e.totals[ti]}</div><div class="l">points de son équipe</div></div>
+      <div class="kpi"><div class="v">${e.totals[1 - ti]}</div><div class="l">points adverses</div></div>
+      <div class="kpi ${status === 'Gagnée' ? 'green' : status === 'Perdue' ? 'red' : ''}"><div class="v" style="font-size:22px">${status}</div><div class="l">objectif ${e.game.rules.target}</div></div>
+    </div>
+    <div class="panel" style="margin-top:10px"><dl class="dl">
+      <dt>Partenaire</dt><dd>${esc(P(partner).name)} (${TEAM_NAMES[ti]})</dd>
+      <dt>Adversaires</dt><dd>${teamNames(e.game.teams[1 - ti])}</dd>
+      <dt>Commencée le</dt><dd>${dateTime(e.game.startedAt)}</dd>
+    </dl></div>`;
+}
+
+/** Évolution, donne après donne, d'une statistique de ce joueur dans la partie. */
+function playerGameChart(pid, g, ctx, tarot) {
+  const rows = (tarot ? ctx.tevaluated[0] : ctx.evaluated[0])?.rows || [];
+  const avail = (tarot ? GAME_STATS_T : GAME_STATS_C).filter((x) => !x.scope && (!x.five || (g.players || []).length === 5));
+  let key = tarot ? ui.gstatT : ui.gstatC;
+  if (!avail.some((x) => x.key === key)) key = avail[0].key;
+  const stat = avail.find((x) => x.key === key);
+  const player = ctx.players.filter((p) => p.id === pid);
+  const hands = rows.map((r) => r.hand);
+  const values = [];
+  for (let k = 0; k <= hands.length; k++) {
+    const gg = k < hands.length ? { ...g, finishedAt: null, winner: null } : g;
+    const S = tarot ? computeTarotStats(player, [gg], hands.slice(0, k)) : computeStats(player, [gg], hands.slice(0, k));
+    values.push(S.get(pid)?.[stat.key] ?? null);
+  }
+  const heads = ['Début de la partie', ...rows.map((r, i) => `Donne ${i + 1}${r.hand.passed ? ' (passée)' : ''}`)];
+  const pctStat = stat.unit === '%';
+  const model = {
+    title: stat.label,
+    series: [{ id: pid, name: P(pid).name, color: SERIES_COLORS[0], values, played: heads.map(() => true) }],
+    heads, ticks: ['0', ...rows.map((_, i) => String(i + 1))],
+    pct: pctStat, zeroBase: stat.unit === '', invert: false,
+    fmt: pctStat ? (v) => `${Math.round(v)} %` : stat.unit === 'dec' ? (v) => num(v, 1) : (v) => num(v),
+    empty: 'La courbe apparaîtra après la première donne.',
+  };
+  ui.bindQueue.push(['.gchart-card', model]);
+  return `<h2>Évolution dans la partie</h2><div class="panel gchart-card">
+    <div class="field" style="margin-top:0"><label for="gchart-stat">Statistique</label>
+      <select class="input" id="gchart-stat" data-gchart>
+        ${avail.map((x) => `<option value="${x.key}" ${x.key === stat.key ? 'selected' : ''}>${x.label}</option>`).join('')}
+      </select></div>
+    ${rows.length ? multiLineChart(model) : '<p class="muted">La courbe apparaîtra après la première donne.</p>'}
+    <p class="small muted" style="margin:6px 0 0">Valeur après chaque donne de cette partie. Touchez la courbe pour lire les valeurs.</p>
+  </div>`;
+}
+
 // ============================================================ GRAPHIQUES
 function chartsPage() {
   const d = D();
@@ -1009,7 +1115,8 @@ function settingsPage() {
   const d = D();
   const r = d.rules;
   const local = g.local || !store.cloudConfigured;
-  let body = `<h2>${esc(g.name)}</h2>`;
+  let body = `<div class="gname-row"><h2>${esc(g.name)}</h2>
+    <button class="link" data-act="rename-group" data-id="${g.id}">Renommer</button></div>`;
   if (local) {
     body += `<div class="notice">Mode local : les données sont enregistrées sur ce téléphone uniquement.
       Pour les partager entre plusieurs téléphones, configurez le serveur (voir le guide d'installation).</div>`;
@@ -1598,7 +1705,7 @@ function tarotGamePage(id) {
       const s = S.get(pid);
       what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takePct)} · place ${num(s.avgRank, 1)}<br>Prend ${pct(s.takeRate)} des donnes` : '';
     }
-    return `<a class="mini" href="#/player/${pid}" style="text-decoration:none;color:inherit">
+    return `<a class="mini" href="#/gplayer/${g.id}/${pid}" style="text-decoration:none;color:inherit">
       <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
   }).join('');
   body += '</div>';
@@ -1927,12 +2034,12 @@ function tarotPlayerPage(id, opts = {}) {
     <div class="hero felt">
       ${avatar(p, 'l')}
       <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
-        <p>${s.games} partie${s.games > 1 ? 's' : ''} de tarot · ${s.handsPlayed} donnes jouées</p>
+        <p>${opts.game ? `${esc(gameTitle(opts.game) || 'Cette partie')} · ${s.handsDealt} donne${s.handsDealt > 1 ? 's' : ''}` : `${s.games} partie${s.games > 1 ? 's' : ''} de tarot · ${s.handsPlayed} donnes jouées`}</p>
         ${profileActions(p, opts)}
       </div>
     </div>
-    <div style="margin-top:14px">${kindSwitch()}</div>
-
+    <div style="margin-top:14px">${scopeOrKindSwitch(id, opts)}</div>
+    ${opts.game ? gameSummary(d, id, true) : `
     <h2>Parties</h2>
     <div class="kpis">
       <div class="kpi blue"><div class="v">${pct(s.winPct)}</div><div class="l">de victoires (1ᵉʳ)</div></div>
@@ -1944,7 +2051,7 @@ function tarotPlayerPage(id, opts = {}) {
       <dt>Podiums</dt><dd>${s.podiums}</dd>
       <dt>Score final moyen</dt><dd>${num(s.avgFinal)}</dd>
       <dt>Meilleur score final</dt><dd>${num(s.best)}</dd>
-    </dl></div>
+    </dl></div>`}
 
     <h2>Prises</h2>
     <div class="kpis">
@@ -1969,7 +2076,7 @@ function tarotPlayerPage(id, opts = {}) {
       </dl>
     </div>
 
-    <h2>À 5 joueurs</h2>
+    ${opts.game && opts.game.players.length !== 5 ? '' : `<h2>À 5 joueurs</h2>
     <div class="kpis">
       <div class="kpi"><div class="v">${s.called}</div><div class="l">fois appelé</div></div>
       <div class="kpi green"><div class="v">${pct(s.calledPct)}</div><div class="l">de réussite comme appelé</div></div>
@@ -1977,7 +2084,7 @@ function tarotPlayerPage(id, opts = {}) {
     </div>
     <div class="panel" style="margin-top:10px"><dl class="dl">
       <dt>Meilleur partenaire</dt><dd>${s.bestPartner ? `${esc(P(s.bestPartner.id).name)} (${pct(s.bestPartner.pct)})` : '–'}</dd>
-    </dl>${!s.bestPartner ? '<p class="small muted" style="margin:8px 0 0">À partir de 2 contrats joués ensemble (l\'un appelant l\'autre).</p>' : ''}</div>
+    </dl>${!s.bestPartner ? '<p class="small muted" style="margin:8px 0 0">À partir de 2 contrats joués ensemble (l\'un appelant l\'autre).</p>' : ''}</div>`}
 
     <h2>Défense et exploits</h2>
     <div class="kpis">
@@ -1991,6 +2098,10 @@ function tarotPlayerPage(id, opts = {}) {
       <dt>Misères annoncées</dt><dd>${s.miseres}</dd>
     </dl></div>`;
 
+  if (opts.game) {
+    body += playerGameChart(id, opts.game, d, true);
+    return shell('Cette partie', body, { back: opts.back, active: 'home' });
+  }
   body += profileChart(id, d, true, opts);
 
   const mine = d.tevaluated.filter((e) => e.finished && e.game.players.includes(id)).slice(0, 10);
@@ -2223,6 +2334,15 @@ async function handle(act, el, id) {
       if (t == null) return;
       store.patch(id, { title: t.trim().slice(0, 50) });
       return toast(t.trim() ? 'Titre enregistré' : 'Titre retiré');
+    }
+    case 'rename-group': {
+      const grp = store.listGroups().find((x) => x.id === id);
+      if (!grp) return;
+      const t = await ask({ title: 'Nom du groupe', input: 'Ex. Les Fous du jeudi', ok: 'Enregistrer', value: grp.name });
+      if (t == null) return;
+      if (!t.trim()) return toast('Le nom ne peut pas être vide');
+      store.renameGroup(id, t);
+      return toast('Groupe renommé');
     }
     case 'person': return go(`#/person/${id}`);
     case 'link-open': return openSheet('link', { pid: id });

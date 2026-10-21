@@ -61,7 +61,10 @@ export function load() {
         localStorage.removeItem(OLD_KEY);
       }
     }
-    for (const [id, s] of Object.entries(root.groups)) root.groups[id] = { ...blankState(), ...s };
+    for (const [id, s] of Object.entries(root.groups)) {
+      root.groups[id] = { ...blankState(), ...s };
+      applyGroupName(root.groups[id]);
+    }
   } catch (e) {
     console.warn('Lecture locale impossible', e);
   }
@@ -106,6 +109,31 @@ export function switchGroup(id) {
   emit();
 }
 
+/**
+ * Le nom d'un groupe peut être changé après sa création : le nouveau nom est rangé
+ * dans l'objet « réglages » du groupe (même id que le groupe), qui se synchronise
+ * comme le reste. Il remplace le nom donné à la création.
+ */
+function applyGroupName(s) {
+  if (!s?.group) return;
+  const r = s.records[s.group.id];
+  const name = r && !r.deleted && r.kind === 'settings' ? (r.data?.name || '').trim() : '';
+  if (name) s.group.name = name;
+}
+
+/** Renomme un groupe suivi par ce téléphone (synchronisé avec les autres téléphones). */
+export function renameGroup(groupId, name) {
+  const s = root.groups[groupId];
+  const clean = (name || '').trim().slice(0, 40);
+  if (!s?.group || !clean) return false;
+  const prev = s.records[groupId];
+  const data = prev && !prev.deleted ? { ...prev.data } : {};
+  putInState(s, 'settings', { ...data, name: clean }, groupId);
+  s.group.name = clean;
+  changed(s);
+  return true;
+}
+
 function addGroupState(st) {
   root.groups[st.group.id] = { ...blankState(), ...st };
   activate(st.group.id);
@@ -143,6 +171,7 @@ function putInState(s, kind, data, id) {
   const ts = Math.max(Date.now(), (prev?.ts ?? 0) + 1);
   s.records[id] = { id, kind, data: clean, deleted: false, ts };
   if (!s.dirty.includes(id)) s.dirty.push(id);
+  if (kind === 'settings') applyGroupName(s);
 }
 
 /** Crée ou remplace un objet du groupe actif. Retourne son id. */
@@ -268,6 +297,7 @@ async function syncOne(s) {
       }
       if (!s.cursor || row.srv > s.cursor) s.cursor = row.srv;
     }
+    if (changedAny) applyGroupName(s);
     s.lastSync = Date.now();
     s.lastError = null;
     return changedAny;

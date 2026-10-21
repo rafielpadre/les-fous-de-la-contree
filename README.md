@@ -51,7 +51,7 @@ window.CONTREE_CONFIG = {
 };
 ```
 
-C'est le seul fichier à modifier.
+C'est le seul fichier à modifier. Pour notre groupe, il est **déjà rempli** dans chaque version livrée : il suffit de tout remplacer sur GitHub, `js/config.js` compris.
 
 ## Étape 3 — Mettre l'application en ligne (GitHub Pages)
 
@@ -159,6 +159,16 @@ Chaque partie garde les règles en vigueur au moment de son lancement.
 
 Exports CSV (ouvrables dans Excel) : **Groupe → Exporter**.
 
+### Stats d'un joueur pour une partie
+
+Dans l'écran d'une partie (contrée ou tarot), **touchez la carte d'un joueur** : sa fiche s'ouvre, présentée comme la carrière mais **calculée uniquement sur cette partie**.
+
+- En haut, l'interrupteur **Cette partie | Carrière** permet de passer de l'une à l'autre ; la flèche retour ramène à la partie.
+- « La partie » remplace le bloc « Parties » : score de son équipe et des adversaires, statut (en cours, gagnée, perdue) et objectif à la contrée ; place actuelle (ou finale) et points au tarot.
+- Puis les mêmes blocs que la carrière (prises, niveau des prises au tarot, contres et défense, exploits…), avec les chiffres de cette partie seulement.
+- « Évolution dans la partie » : la statistique choisie, recalculée après chaque donne.
+- Non affichés, car sans intérêt sur une seule partie : séries de victoires, partenaires et adversaires, dernières parties (et le bloc « À 5 joueurs » si la partie n'est pas à 5).
+
 ## Plusieurs groupes et « Toutes ses stats »
 
 Un même téléphone peut suivre **plusieurs groupes**, par exemple un groupe avec certains amis et un autre avec d'autres. Pour passer de l'un à l'autre, touchez le nom du groupe en haut de l'onglet Parties. Le menu qui s'ouvre permet aussi d'**en rejoindre un autre** (avec son code) ou d'en **créer un nouveau**. On le retrouve dans **Groupe → Mes groupes**.
@@ -172,6 +182,8 @@ Chaque groupe garde ses propres profils, parties, classements et graphiques. Rie
 Le total d'une personne n'est calculé que sur un téléphone qui suit **tous** les groupes concernés. Chaque groupe reste privé et protégé par son code.
 
 Pour retirer un lien, rouvrez **Liens** et touchez la fiche marquée ✓.
+
+**Renommer un groupe.** Onglet **Groupe**, bouton **Renommer** à côté du nom. Le nouveau nom arrive sur les autres téléphones à la synchronisation suivante (quelques secondes), y compris chez ceux qui rejoignent le groupe plus tard. Le code d'invitation ne change pas. Techniquement, le nouveau nom est rangé dans les réglages du groupe, qui se synchronisent comme les parties : aucune modification de la base Supabase n'est nécessaire.
 
 ## Tarot
 
@@ -213,7 +225,7 @@ Les règles par défaut du tarot se règlent dans **Groupe → Règles du tarot*
 
 ## Mettre à jour l'application
 
-Après toute modification d'un fichier, changez la ligne `const VERSION = 'fdc-v1';` dans `sw.js` (par exemple en `fdc-v2`). Uploadez ensuite les fichiers sur GitHub. Les téléphones prendront la nouvelle version à l'ouverture suivante.
+Remplacez tous les fichiers sur GitHub par ceux de la nouvelle version (`js/config.js` est déjà rempli). Si vous modifiez vous-même un fichier, changez aussi la ligne `const VERSION = 'fdc-vN';` dans `sw.js` (en augmentant N) et `APP_BUILD` dans `js/app.js`. Les téléphones prendront la nouvelle version à l'ouverture suivante.
 
 ## Éviter la mise en veille du serveur
 

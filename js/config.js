@@ -7,7 +7,9 @@
 //                ou l'ancienne clé "anon" (commence par eyJ...).
 //                Jamais la clé secrète / service_role !
 //
-//  Laissez vide pour utiliser l'app en mode local (sur un seul téléphone).
+//  Déjà rempli avec le serveur des Fous de la Contrée : ce fichier est
+//  inclus tel quel dans chaque nouvelle version, plus besoin de le recopier.
+//  (Clé publique : elle est faite pour être visible dans l'app.)
 // =====================================================================
 window.CONTREE_CONFIG = {
   supabaseUrl: 'https://yqcttetjbnfldbsammbg.supabase.co',
