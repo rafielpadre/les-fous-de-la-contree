@@ -118,24 +118,36 @@ Notations utilisées :
 - `p~` : `p` arrondi à la dizaine (le 5 profite à l'attaque) ;
 - `b` : 20 points de belote.
 
+**Sans contre :**
+
 | Situation | Attaque | Défense |
 |---|---|---|
-| Contrat réussi (`p + b_attaque ≥ A`) | `m·A + p~ + b_attaque` | `160 − p~ + b_défense` |
-| Contrat chuté | `0` (la belote de l'attaque est perdue) | `160 + m·A + b_défense` |
-| Capot non annoncé réussi | `m·A + 250 + b_attaque` | `0 + b_défense` |
+| Contrat réussi (`p + b_attaque ≥ A`) | `A + p~ + b_attaque` | `160 − p~ + b_défense` |
+| Contrat chuté | `0` (belote de l'attaque perdue, option) | `160 + A + b_défense` |
+| Capot non annoncé réussi | `A + 250 + b_attaque` | `0 + b_défense` |
+
+**Contré (`m = 2`) ou surcontré (`m = 4`), règle officielle de la Fédération Française de Belote** (« le gagnant prend tout », réglage par défaut des nouvelles parties) :
+
+| Situation | Attaque | Défense |
+|---|---|---|
+| Contrat réussi | `m × (160 + A + b_attaque)` (250 au lieu de 160 en cas de capot) | `0 + b_défense` (la belote est imprenable) |
+| Contrat chuté | `0` (ou sa belote si l'option « belote perdue » est décochée) | `m × (160 + A + b_défense)` |
 
 **Exemple 1.** Annonce de 100 à cœur. L'attaque fait 96 points et a la belote : 96 + 20 = 116 ≥ 100, le contrat est réussi. L'attaque marque 100 + 100 + 20 = 220 (96 arrondi donne 100). La défense marque 160 − 100 = 60.
 
-**Exemple 2.** La même donne, contrée : l'attaque marque 2×100 + 100 + 20 = 320.
+**Exemple 2.** La même donne, contrée : l'attaque marque 2 × (160 + 100 + 20) = 560, la défense 0. Surcontrée : 4 × 280 = 1 120.
 
-**Exemple 3.** Annonce de 120 qui chute : la défense marque 160 + 120 = 280.
+**Exemple 3.** Annonce de 100 contrée qui chute, sans belote : la défense marque 2 × (160 + 100) = 520, l'attaque 0. Sans contre : 160 + 100 = 260.
+
+L'ancienne règle (seule l'annonce est multipliée et chacun garde ses points : exemple 2 → 2×100 + 100 + 20 = 320 pour l'attaque, 60 pour la défense) reste disponible en décochant « Contré : le gagnant prend tout ». Les parties lancées avant la version 15 gardent l'ancienne règle.
 
 Plusieurs règles sont réglables dans **Groupe → Règles du groupe** :
 
+- le décompte des donnes contrées (règle officielle ou ancienne règle) ;
 - l'arrondi ;
 - ce que marque la défense en cas de chute (160, 162, ou l'annonce seule) ;
 - le capot non annoncé à 250 ;
-- la belote perdue en cas de chute ;
+- la belote perdue en cas de chute (la règle officielle dit qu'elle est imprenable : décochez pour la suivre) ;
 - le sans atout et le tout atout ;
 - le score cible.
 

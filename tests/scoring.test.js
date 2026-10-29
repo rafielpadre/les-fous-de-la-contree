@@ -1,7 +1,7 @@
 // Tests du moteur de calcul : `node --test tests/`
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreHand, gameTotals, roundAttack, DEFAULT_RULES } from '../js/scoring.js';
+import { scoreHand, gameTotals, roundAttack, explain, DEFAULT_RULES } from '../js/scoring.js';
 
 // Équipe 0 = Alice (a) + Bruno (b) ; équipe 1 = Chloé (c) + David (d)
 const T = [['a', 'b'], ['c', 'd']];
@@ -109,4 +109,33 @@ test('fin de partie : la plus haute gagne si les deux dépassent', () => {
   const g2 = gameTotals(hands, T, rules);
   assert.deepEqual(g2.totals, [490, 500]);
   assert.equal(g2.winner, 1);
+});
+
+test('contré, règle officielle (tout au gagnant)', () => {
+
+  const R = { contreAll: true, beloteLostOnFail: false };
+  // 100 contré, réussi avec 110 : (160 + 100) × 2 = 520 ; défense 0
+  let r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 110 }, T, R);
+  assert.deepEqual(r.scores, [520, 0]);
+  // surcontré : × 4
+  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', surcoincheBy: 'b', attackPoints: 110 }, T, R);
+  assert.deepEqual(r.scores, [1040, 0]);
+  // belote de l'attaque comptée dans le total multiplié ; belote de la défense imprenable
+  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 110, beloteBy: 'b' }, T, R);
+  assert.deepEqual(r.scores, [560, 0]);
+  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 110, beloteBy: 'd' }, T, R);
+  assert.deepEqual(r.scores, [520, 20]);
+  // chute contrée : défense (160 + 100) × 2 = 520 ; l'attaque garde sa belote si l'option est décochée
+  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 70, beloteBy: 'a' }, T, R);
+  assert.equal(r.made, false);
+  assert.deepEqual(r.scores, [20, 520]);
+  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 70, beloteBy: 'a' }, T, { ...R, beloteLostOnFail: true });
+  assert.deepEqual(r.scores, [0, 520]);
+  // sans contre : inchangé
+  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', attackPoints: 110 }, T, R);
+  assert.deepEqual(r.scores, [210, 50]);
+  // ancienne règle (parties existantes) : seule l'annonce est doublée
+  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 110 }, T, {});
+  assert.deepEqual(r.scores, [310, 50]);
+  assert.match(explain(scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 110 }, T, R)), /Contré réussi .* 520/);
 });

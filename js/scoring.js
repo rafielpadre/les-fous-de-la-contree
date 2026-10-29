@@ -15,6 +15,12 @@
 //  Contrat réussi  ⇔  p + b_a ≥ A          (capot/générale : tous les plis)
 //  Réussi : S_att = m·A + p~ + b_a          S_def = d~ + b_d
 //  Chuté  : S_att = 0                       S_def = 160 + m·A + b_d
+//
+//  Option contreAll (règle officielle FFB) : si la donne est contrée (m ≥ 2),
+//  le camp qui a raison prend TOUT, et le total est multiplié :
+//    Réussi : S_att = m·(B + A + b_a)         S_def = b_d   (belote imprenable)
+//    Chuté  : S_att = b_a ou 0 (option)      S_def = m·(160 + A + b_d)
+//  avec B = 160 (250 en cas de capot). Sans contre, rien ne change.
 // =====================================================================
 
 export const SUITS = {
@@ -33,6 +39,10 @@ export const DEFAULT_RULES = Object.freeze({
   target: 2000,               // score à atteindre (modifiable à chaque partie)
   rounding: true,             // arrondi à la dizaine, 5 pour l'attaque
   failBase: 160,              // chute : la défense marque failBase + m·A
+  // Donne contrée : false = seule l'annonce est multipliée (anciennes parties) ;
+  // true = règle FFB, le gagnant prend tout : m × (160 + A + belote).
+  // Les nouvelles parties d'un groupe utilisent true par défaut (voir app.js).
+  contreAll: false,
   beloteLostOnFail: true,     // l'attaque chutée perd sa belote
   capotUnannounced250: true,  // capot non annoncé : 250 points de cartes au lieu de 160
   allowSA: true,              // sans atout autorisé
@@ -110,7 +120,17 @@ export function scoreHand(hand, teams, rules = DEFAULT_RULES) {
   let pAtt = 0;
   let pDef = 0;
 
-  if (made) {
+  const all = m > 1 && !!r.contreAll;
+
+  if (made && all) {
+    pAtt = capot && (announcedCapot || r.capotUnannounced250) ? 250 : 160;   // B
+    pDef = 0;
+    scores[attack] = m * (pAtt + A + b_a);
+    scores[defense] = b_d;
+  } else if (!made && all) {
+    scores[attack] = r.beloteLostOnFail ? 0 : b_a;
+    scores[defense] = m * (r.failBase + A + b_d);
+  } else if (made) {
     if (capot && !announcedCapot && r.capotUnannounced250) {
       pAtt = 250;                       // capot non annoncé : il vaut 250
       pDef = 0;
@@ -132,7 +152,7 @@ export function scoreHand(hand, teams, rules = DEFAULT_RULES) {
     scores,
     made,
     attack,
-    detail: { A, m, p, b_a, b_d, pAtt, pDef, capot, announcedCapot, failBase: r.failBase },
+    detail: { A, m, p, b_a, b_d, pAtt, pDef, capot, announcedCapot, failBase: r.failBase, all, beloteLostOnFail: r.beloteLostOnFail },
   };
 }
 
@@ -159,8 +179,18 @@ export function gameTotals(hands, teams, rules = DEFAULT_RULES) {
 /** Description textuelle courte d'un résultat (pour l'aperçu de saisie). */
 export function explain(res) {
   if (res.detail.passed) return 'Donne passée : aucun point.';
-  const { A, m, pAtt, b_a, pDef, b_d } = res.detail;
+  const { A, m, pAtt, b_a, pDef, b_d, all } = res.detail;
   const mTxt = m > 1 ? `${m}×${A}` : `${A}`;
+  if (all) {
+    const word = m === 4 ? 'Surcontré' : 'Contré';
+    if (res.made) {
+      const inner = [pAtt, A, b_a && `${b_a} belote`].filter(Boolean).join(' + ');
+      return `${word} réussi — attaque : ${m}×(${inner}) = ${res.scores[res.attack]} ; défense : ${b_d ? `${b_d} belote` : '0'}`;
+    }
+    const inner = [res.detail.failBase, A, b_d && `${b_d} belote`].filter(Boolean).join(' + ');
+    const att = res.scores[res.attack];
+    return `${word} chuté — défense : ${m}×(${inner}) = ${res.scores[1 - res.attack]} ; attaque : ${att ? `${att} belote` : '0'}`;
+  }
   if (res.made) {
     const att = [mTxt, pAtt && `${pAtt}`, b_a && `${b_a} belote`].filter(Boolean).join(' + ');
     const def = [pDef && `${pDef}`, b_d && `${b_d} belote`].filter(Boolean).join(' + ') || '0';

@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 14;   // doit correspondre à 'fdc-v14' dans sw.js
-const APP_VERSION = `${APP_BUILD} — reprendre des joueurs d'un autre groupe`;
+const APP_BUILD = 15;   // doit correspondre à 'fdc-v15' dans sw.js
+const APP_VERSION = `${APP_BUILD} — contré : règle officielle`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -64,7 +64,8 @@ function D() {
   cache = {
     v: version,
     ...buildData(store.list('player'), store.list('game'), store.list('hand')),
-    rules: { ...DEFAULT_RULES, ...(settings?.rules || {}) },
+    // contreAll : règle officielle (tout au gagnant) par défaut pour les nouvelles parties
+    rules: { ...DEFAULT_RULES, contreAll: true, ...(settings?.rules || {}) },
     trules: { ...DEFAULT_TAROT_RULES, ...(settings?.tarot || {}) },
   };
   return cache;
@@ -1227,7 +1228,8 @@ function settingsPage() {
       ${tg('allowSA', 'Sans atout autorisé')}
       ${tg('allowTA', 'Tout atout autorisé')}
       ${tg('rounding', 'Arrondir à la dizaine', 'Le 5 profite à l\'attaque : 85 → 90, la défense prend 160 − 90 = 70.')}
-      ${tg('beloteLostOnFail', 'Belote perdue si l\'attaque chute')}
+      ${tg('contreAll', 'Contré : le gagnant prend tout (règle officielle)', 'Contrat contré : le camp qui a raison marque (160 + annonce + belote) × 2, l\'autre 0 (sauf sa belote). Surcontré : × 4. Décoché : seule l\'annonce est doublée et chacun garde ses points.')}
+      ${tg('beloteLostOnFail', 'Belote perdue si l\'attaque chute', 'Règle officielle : décoché (la belote est imprenable).')}
       ${tg('capotUnannounced250', 'Capot non annoncé = 250 points', 'Sinon il vaut 160 comme une donne normale.')}
       </div>
       <div class="field"><label for="rule-fail">En cas de chute, la défense marque</label>
@@ -1244,10 +1246,13 @@ function settingsPage() {
       <p><code>A</code> = annonce (80 à 160, capot = 250, générale = 500), <code>m</code> = 1, ou 2 si contré, ou 4 si surcontré,
       <code>p</code> = points de cartes faits par l'attaque (sur 162), <code>b</code> = 20 de belote.</p>
       <p>Le contrat est <b>réussi</b> si <code>p + b(attaque) ≥ A</code>.</p>
-      <p>Réussi : attaque = <code>m × A + p arrondi + b</code>, défense = <code>160 − p arrondi + b</code>.</p>
-      <p>Chuté : attaque = 0, défense = <code>${r.failBase ? `${r.failBase} + ` : ''}m × A + b</code>.</p>
+      <p>${r.contreAll ? 'Sans contre, réussi' : 'Réussi'} : attaque = <code>${r.contreAll ? '' : 'm × '}A + p arrondi + b</code>, défense = <code>160 − p arrondi + b</code>.</p>
+      <p>${r.contreAll ? 'Sans contre, chuté' : 'Chuté'} : attaque = 0, défense = <code>${r.failBase ? `${r.failBase} + ` : ''}${r.contreAll ? '' : 'm × '}A + b</code>.</p>
+      ${r.contreAll ? `<p><b>Contré</b> (m = 2) ou <b>surcontré</b> (m = 4) : le camp qui a raison marque <code>m × (160 + A + b)</code>, l'autre 0 (sauf sa belote, imprenable${r.beloteLostOnFail ? ' — perdue par une attaque qui chute, selon vos règles' : ''}).</p>` : ''}
       <p class="muted">Exemple : 100 ♥, l'attaque fait 96 avec la belote → 96 + 20 = 116 ≥ 100, réussi.
-      Attaque : 100 + 100 + 20 = 220 ; défense : 60. Si c'était contré : 200 + 100 + 20 = 320.</p>
+      Attaque : 100 + 100 + 20 = 220 ; défense : 60. ${r.contreAll
+        ? 'Si c\'était contré : attaque 2 × (160 + 100 + 20) = 560, défense 0. Contré et chuté (sans belote) : défense 2 × (160 + 100) = 520.'
+        : 'Si c\'était contré : 200 + 100 + 20 = 320.'}</p>
     </div>
 
     <h2>Règles du tarot</h2>
@@ -2397,7 +2402,7 @@ async function handle(act, el, id) {
     }
     case 'rematch': {
       const g = store.get(id);
-      return startGame(g.teams.map((t) => [...t]), { ...g.rules });
+      return startGame(g.teams.map((t) => [...t]), { contreAll: D().rules.contreAll, ...g.rules });
     }
     case 'delete-game': {
       if (!(await ask({ title: 'Supprimer cette partie ?', message: 'Toutes ses donnes seront effacées et les statistiques recalculées.', ok: 'Supprimer', danger: true }))) return;
