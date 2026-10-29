@@ -139,7 +139,7 @@ Notations utilisées :
 
 **Exemple 3.** Annonce de 100 contrée qui chute, sans belote : la défense marque 2 × (160 + 100) = 520, l'attaque 0. Sans contre : 160 + 100 = 260.
 
-L'ancienne règle (seule l'annonce est multipliée et chacun garde ses points : exemple 2 → 2×100 + 100 + 20 = 320 pour l'attaque, 60 pour la défense) reste disponible en décochant « Contré : le gagnant prend tout ». Les parties lancées avant la version 15 gardent l'ancienne règle.
+L'ancienne règle (seule l'annonce est multipliée et chacun garde ses points : exemple 2 → 2×100 + 100 + 20 = 320 pour l'attaque, 60 pour la défense) reste disponible en décochant « Contré : le gagnant prend tout ». Les parties lancées avant la version 15 gardent l'ancienne règle. En bas de l'écran d'une partie, le cadre **Donnes contrées** indique la règle utilisée par cette partie ; **Passer à la règle officielle** (ou l'inverse) recalcule toutes ses donnes.
 
 Plusieurs règles sont réglables dans **Groupe → Règles du groupe** :
 

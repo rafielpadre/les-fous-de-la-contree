@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 15;   // doit correspondre à 'fdc-v15' dans sw.js
-const APP_VERSION = `${APP_BUILD} — contré : règle officielle`;
+const APP_BUILD = 16;   // doit correspondre à 'fdc-v16' dans sw.js
+const APP_VERSION = `${APP_BUILD} — règle du contré par partie`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -476,6 +476,12 @@ function gamePage(id) {
     body += [...e.rows].reverse().map((row, k) => handRow(row, e.rows.length - k, g.teams)).join('');
     body += '</ul>';
   }
+
+  // Règle des donnes contrées utilisée par CETTE partie (modifiable : toutes ses donnes sont recalculées)
+  body += `<div class="panel contre-rule" style="margin-top:16px">
+      <div><b>Donnes contrées :</b> ${g.rules.contreAll ? 'règle officielle (le gagnant prend tout)' : 'ancienne règle (seule l\'annonce est doublée)'}</div>
+      <button class="link" data-act="toggle-contre" data-id="${g.id}">${g.rules.contreAll ? 'Revenir à l\'ancienne règle' : 'Passer à la règle officielle'}</button>
+    </div>`;
 
   body += `<div style="margin-top:22px" class="row wrap">
       <span class="small muted" style="flex:1">Commencée le ${dateTime(g.startedAt)}</span>
@@ -2414,6 +2420,21 @@ async function handle(act, el, id) {
     case 'game-view': ui.gameView = el.dataset.v; return render();
     case 'kind': setKind(el.dataset.v); ui.chartSel = null; return render();
     case 'force-update': return forceUpdate();
+    case 'toggle-contre': {
+      const g = store.get(id);
+      if (!g) return;
+      const to = !g.rules.contreAll;
+      const ok = await ask({
+        title: to ? 'Règle officielle pour cette partie ?' : 'Ancienne règle pour cette partie ?',
+        message: to
+          ? 'Donne contrée : le camp qui a raison marque (160 + annonce + belote) × 2 (× 4 si surcontré), l\'autre 0. Toutes les donnes de cette partie seront recalculées.'
+          : 'Donne contrée : seule l\'annonce est doublée et chacun garde ses points. Toutes les donnes de cette partie seront recalculées.',
+        ok: 'Recalculer',
+      });
+      if (!ok) return;
+      store.patch(id, { rules: { ...g.rules, contreAll: to } });
+      return afterHandChange(id, 'Partie recalculée');   // le gagnant peut changer
+    }
     case 'rename-game': {
       const g = store.get(id);
       const t = await ask({ title: 'Titre de la partie', input: 'Ex. Revanche du jeudi', ok: 'Enregistrer', value: g?.title || '' });

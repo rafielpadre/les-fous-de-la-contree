@@ -608,3 +608,4 @@ p { margin: 0 0 10px; }
 .gname-row .link { flex: none; }
 .pick button:disabled { opacity: .5; }
 .pick button small { font-weight: 400; color: var(--muted); }
+.contre-rule { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 15px; }
