@@ -1,25 +1,35 @@
-# Facultatif : empêche la mise en veille du projet Supabase gratuit
-# (il est mis en pause après 7 jours sans activité).
-# Envoie une petite requête de lecture tous les 3 jours.
-# À configurer : Settings > Secrets and variables > Actions > New repository secret
-#   SUPABASE_URL  (ex. https://abcdefgh.supabase.co)
-#   SUPABASE_KEY  (la clé publique, la même que dans js/config.js)
-#   GROUP_CODE    (le code d'invitation de votre groupe)
+# Empêche la mise en veille du projet Supabase gratuit
+# (Supabase met en pause un projet gratuit après 7 jours sans activité).
+# Tous les 2 jours, envoie une petite requête à la base : rien n'est lu ni modifié.
+#
+# Aucun réglage nécessaire : l'adresse et la clé utilisées sont les mêmes que dans
+# js/config.js (clé publique, faite pour être visible). Si vous changez de projet
+# Supabase, mettez à jour SUPABASE_URL et SUPABASE_KEY ci-dessous.
+#
+# Lancement manuel : onglet Actions > « Garder Supabase éveillé » > Run workflow.
 name: Garder Supabase éveillé
 on:
   schedule:
-    - cron: '17 6 */3 * *'
+    - cron: '17 6 */2 * *'
   workflow_dispatch:
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Requête de lecture
+      - name: Requête vers la base
         env:
-          URL: ${{ secrets.SUPABASE_URL }}
-          KEY: ${{ secrets.SUPABASE_KEY }}
-          CODE: ${{ secrets.GROUP_CODE }}
+          SUPABASE_URL: https://yqcttetjbnfldbsammbg.supabase.co
+          SUPABASE_KEY: sb_publishable_1yhsc3Ixu-X23CsAeGu-Ow_ebPJaAdM
         run: |
-          curl -fsS -X POST "$URL/rest/v1/rpc/join_group" \
-            -H "apikey: $KEY" -H "Content-Type: application/json" \
-            -d "{\"p_code\":\"$CODE\"}"
+          # On demande un groupe au code volontairement inexistant : la base exécute
+          # la recherche (ce qui compte comme une activité) et répond « code inconnu ».
+          status=$(curl -sS -o reponse.txt -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/rpc/join_group" \
+            -H "apikey: $SUPABASE_KEY" -H "Content-Type: application/json" \
+            -d '{"p_code":"PING0000"}')
+          echo "Réponse HTTP $status : $(cat reponse.txt)"
+          # 2xx ou 4xx (« code inconnu ») : la base a répondu, elle est active.
+          # 5xx ou absence de réponse : projet en pause ou en panne → échec visible dans Actions.
+          case "$status" in
+            2*|4*) echo "Supabase est actif." ;;
+            *) echo "Supabase ne répond pas (projet en pause ?)" ; exit 1 ;;
+          esac
