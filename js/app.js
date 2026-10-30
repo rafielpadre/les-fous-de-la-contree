@@ -18,7 +18,7 @@ import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS }
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
 const APP_BUILD = 22;   // doit correspondre à 'fdc-v22' dans sw.js
-const APP_VERSION = `${APP_BUILD} — design moderne (essai)`;
+const APP_VERSION = `${APP_BUILD} — nouveau design`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -240,15 +240,18 @@ window.addEventListener('hashchange', () => {
 function render() {
   const st = store.getState();
   if (!st.group) {
+    setMetaTheme(BRAND_GREEN);
     app.innerHTML = welcomePage();
     return;
   }
   const r = route();
   if (ui.launch || r.name === 'start') {
+    setMetaTheme(BRAND_GREEN);
     app.innerHTML = launchPage();
     store.setPolling(false);
     return;
   }
+  setMetaTheme(HEADER_STYLES[headerStyle()].c);
   ui.bindQueue = [];
   let page;
   switch (r.name) {
@@ -305,7 +308,7 @@ function shell(title, body, { back = null, fab = '', active = '', groupSwitch = 
     <nav class="tabs five" aria-label="Navigation">
       ${tab('#/', TAB_ICONS.home, 'Parties', 'home')}
       ${tab('#/players', TAB_ICONS.players, 'Joueurs', 'players')}
-      ${tab('#/charts', TAB_ICONS.charts, 'Graphiques', 'charts')}
+      ${tab('#/charts', TAB_ICONS.charts, 'Graphes', 'charts')}
       ${tab('#/history', TAB_ICONS.history, 'Historique', 'history')}
       ${tab('#/settings', TAB_ICONS.settings, 'Groupe', 'settings')}
     </nav>`;
@@ -345,9 +348,11 @@ const HEADER_STYLES = {
 function headerStyle() {
   try { const k = localStorage.getItem('fdc:header'); return HEADER_STYLES[k] ? k : 'clair'; } catch { return 'clair'; }
 }
+const BRAND_GREEN = '#1d5a3c';   // ouverture et menu des groupes : toujours sur fond vert
+function setMetaTheme(c) { document.querySelector('meta[name="theme-color"]')?.setAttribute('content', c); }
 function applyHeaderStyle(k = headerStyle()) {
   document.documentElement.dataset.header = k;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', HEADER_STYLES[k].c);
+  setMetaTheme(HEADER_STYLES[k].c);
 }
 applyHeaderStyle();
 
@@ -364,15 +369,20 @@ function showSplash() {
   el.setAttribute('aria-hidden', 'true');
   el.innerHTML = `${logoImg('splash-logo')}<p class="splash-name"><small>Les Fous de</small>la Contrée</p>`;
   document.body.appendChild(el);
-  // Pendant le logo, tout le fond de l'écran prend la couleur du logo (pas de bande claire en bas)
+  // Pendant le logo, tout l'écran (et la barre du téléphone) passe en vert, sans bande claire en bas
   document.documentElement.classList.add('splashing');
+  setMetaTheme(BRAND_GREEN);
   const quick = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   let gone = false;
   const close = () => {
     if (gone) return;
     gone = true;
     el.classList.add('out');
-    setTimeout(() => { el.remove(); document.documentElement.classList.remove('splashing'); }, 450);
+    setTimeout(() => {
+      el.remove();
+      document.documentElement.classList.remove('splashing');
+      if (!ui.launch && store.getState().group) applyHeaderStyle();
+    }, 450);
   };
   el.addEventListener('click', close);
   setTimeout(close, quick ? 800 : 2600);

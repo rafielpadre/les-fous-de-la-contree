@@ -737,9 +737,11 @@ html:is([data-header="vert"], [data-header="noir"], [data-header="bordeaux"], [d
 .hero h2 { color: var(--hdr-ink); font-stretch: 100%; letter-spacing: -.02em; }
 .hero p { color: var(--hdr-sub); opacity: 1; }
 .av.l { box-shadow: 0 0 0 4px var(--card), 0 10px 26px -12px rgba(38, 34, 28, .45); }
-.welcome .top { border-bottom: 1px solid var(--hdr-line); background: var(--hdr-solid); }
+/* Écran d'ouverture et menu des groupes : toujours sur fond vert, quel que soit le bandeau choisi */
+.welcome .top { background: var(--brand); color: #fff; border-bottom: 0; }
 .logo, .brand-top .logo { font-stretch: 100%; letter-spacing: -.025em; }
-.splash.felt, html.splashing, html.splashing body { background: var(--hdr-solid); }
+.splash.felt { background: var(--brand); color: #fff; }
+html.splashing, html.splashing body { background: var(--brand); }
 .win.felt { background-color: var(--brand); color: #fff; }
 
 /* Titres et chiffres plus sobres */
@@ -763,7 +765,9 @@ h2 { font-stretch: 100%; font-weight: 800; letter-spacing: -.02em; }
   background: rgba(255, 255, 255, .86); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
   box-shadow: 0 14px 34px -14px rgba(38, 34, 28, .4);
 }
-.tabs a { border-radius: 16px; padding: 7px 0 5px; font-size: 11.5px; transition: background .15s, color .15s; }
+.tabs a { border-radius: 16px; padding: 7px 2px 5px; font-size: 11.5px; transition: background .15s, color .15s;
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 360px) { .tabs { left: 8px; right: 8px; padding: 5px; } .tabs a { font-size: 10.5px; } }
 .tabs a .ic svg { width: 22px; height: 22px; }
 .tabs a[aria-current="page"] { background: var(--brand-soft); color: var(--brand); }
 .tabs a[aria-current="page"] .ic { color: var(--brand); }

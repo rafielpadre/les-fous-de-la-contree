@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/logo.svg" alt="Logo Les Fous de la Contrée" width="140">
+  <img src="img/logo.jpg" alt="Logo Les Fous de la Contrée" width="160">
 </p>
 
 <h1 align="center">Les Fous de la Contrée</h1>
@@ -44,7 +44,7 @@ Elle s'installe sur iPhone et Android depuis le navigateur (« Ajouter à l'écr
 
 - **Profil de chaque joueur** avec sa photo : victoires, prises réussies, points moyens par contrat, annonce moyenne, contres réussis, chutes infligées en défense, belotes, capots, meilleur partenaire et adversaire redouté. Au tarot : niveau de ses prises (Petite, Garde…), place moyenne, podiums, petits au bout…
 - **Stats d'une partie** : touchez un joueur pendant la partie pour voir sa fiche détaillée sur cette partie seulement, ou basculez sur sa carrière.
-- **Graphiques** : choisissez une statistique et les joueurs à comparer, et suivez leur évolution partie après partie. Pendant une partie, une courbe par joueur se met à jour à chaque donne.
+- **Graphes** : choisissez une statistique et les joueurs à comparer, et suivez leur évolution partie après partie. Pendant une partie, une courbe par joueur se met à jour à chaque donne.
 - **Export CSV** des statistiques et de toutes les donnes, pour Excel.
 
 ### Jouer à plusieurs, en plusieurs groupes
@@ -62,8 +62,9 @@ Elle s'installe sur iPhone et Android depuis le navigateur (« Ajouter à l'écr
 
 ## Personnaliser
 
-- Le **logo** affiché à l'ouverture se change en remplaçant `img/logo.svg` (ou en indiquant une autre image dans `js/config.js`).
-- Les **couleurs** de l'app (vert tapis de jeu par défaut) sont réunies au début de `css/app.css`.
+- Le **logo** affiché à l'ouverture se change en remplaçant `img/logo.jpg` (ou en indiquant une autre image dans `js/config.js`).
+- Chacun choisit la **couleur du bandeau** sur son téléphone (Groupe → Apparence) : clair, vert, noir, bordeaux, bleu nuit ou sauge.
+- Les **couleurs** de l'app (fond crème, accent vert) sont réunies dans `css/app.css`.
 
 Le détail est dans le [guide d'utilisation](docs/GUIDE.md#modifier-le-design).
 
