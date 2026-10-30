@@ -691,5 +691,97 @@ html.splashing, html.splashing body { background: var(--brand); }
 .lightbox.out { opacity: 0; transition: opacity .2s; }
 @keyframes lb-in { from { opacity: 0; } to { opacity: 1; } }
 
+/* =====================================================================
+   DESIGN MODERNE (branche design-moderne)
+   Fond crème, cartes à fins traits, accent vert, en-tête clair au choix,
+   barre d'onglets flottante. Le style du bandeau se choisit dans
+   Groupe → Apparence (html[data-header="…"]).
+   ===================================================================== */
+:root {
+  --paper: #f6f2ea;
+  --card: #ffffff;
+  --line: #ebe3d6;
+  --ink: #26221c;
+  --ink-2: #4b443a;
+  --muted: #827868;
+  --brand: #1d5a3c;
+  --brand-2: #1f7a4c;
+  --brand-soft: #e4f0e7;
+  --r-lg: 18px;
+  --r-md: 12px;
+  --shadow: 0 1px 2px rgba(38, 34, 28, .05), 0 8px 22px -14px rgba(38, 34, 28, .22);
+  /* Bandeau (par défaut : clair) */
+  --hdr-bg: rgba(250, 247, 241, .9);
+  --hdr-solid: #faf7f1;
+  --hdr-ink: #26221c;
+  --hdr-sub: #827868;
+  --hdr-chip: rgba(38, 34, 28, .06);
+  --hdr-line: #ebe3d6;
+}
+html[data-header="vert"]     { --hdr-bg: #1d5a3c; --hdr-solid: #1d5a3c; }
+html[data-header="noir"]     { --hdr-bg: #26221c; --hdr-solid: #26221c; }
+html[data-header="bordeaux"] { --hdr-bg: #6b2232; --hdr-solid: #6b2232; }
+html[data-header="nuit"]     { --hdr-bg: #1e2b45; --hdr-solid: #1e2b45; }
+html[data-header="sauge"]    { --hdr-bg: #6f8f7a; --hdr-solid: #6f8f7a; }
+html:is([data-header="vert"], [data-header="noir"], [data-header="bordeaux"], [data-header="nuit"], [data-header="sauge"]) {
+  --hdr-ink: #ffffff; --hdr-sub: rgba(255, 255, 255, .78); --hdr-chip: rgba(255, 255, 255, .15); --hdr-line: transparent;
+}
+
+/* Bandeaux : couleur unie, sans motif */
+.felt { background: var(--hdr-bg); background-image: none; color: var(--hdr-ink); }
+.topbar { backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); border-bottom: 1px solid var(--hdr-line); }
+.topbar h1 { font-stretch: 100%; font-weight: 800; letter-spacing: -.02em; }
+.topbar .back, .sync { background: var(--hdr-chip); color: var(--hdr-ink); }
+.gswitch .chev { background: var(--hdr-chip); }
+.hero { border-bottom: 1px solid var(--hdr-line); background: var(--hdr-solid); }
+.hero h2 { color: var(--hdr-ink); font-stretch: 100%; letter-spacing: -.02em; }
+.hero p { color: var(--hdr-sub); opacity: 1; }
+.av.l { box-shadow: 0 0 0 4px var(--card), 0 10px 26px -12px rgba(38, 34, 28, .45); }
+/* Écran d'ouverture et menu des groupes : toujours sur fond vert, quel que soit le bandeau choisi */
+.welcome .top { background: var(--brand); color: #fff; border-bottom: 0; }
+.logo, .brand-top .logo { font-stretch: 100%; letter-spacing: -.025em; }
+.splash.felt { background: var(--brand); color: #fff; }
+html.splashing, html.splashing body { background: var(--brand); }
+.win.felt { background-color: var(--brand); color: #fff; }
+
+/* Titres et chiffres plus sobres */
+h2 { font-stretch: 100%; font-weight: 800; letter-spacing: -.02em; }
+.kpi .v, .item .r { font-stretch: 100%; letter-spacing: -.02em; }
+
+/* Cartes : fin trait + ombre douce */
+.panel, .list, .kpi, .mini, .gcard, .kind-switch, .launch-new { border: 1px solid var(--line); }
+.gcard.last { border-color: var(--brand-2); }
+
+/* Boutons : vert en principal (au lieu du doré) */
+.btn.gold { background: var(--brand-2); color: #fff; }
+.btn.light { background: var(--brand-soft); color: var(--brand); }
+.fab-wrap .btn { box-shadow: 0 12px 28px -12px rgba(29, 90, 60, .7); }
+.kind-switch button[aria-pressed="true"], .kind-switch a[aria-pressed="true"] { background: var(--brand); }
+
+/* Barre d'onglets flottante */
+.tabs {
+  left: 12px; right: 12px; bottom: calc(10px + var(--safe-b)); max-width: 560px; margin: 0 auto;
+  border: 1px solid var(--line); border-radius: 22px; padding: 6px;
+  background: rgba(255, 255, 255, .86); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 14px 34px -14px rgba(38, 34, 28, .4);
+}
+.tabs a { border-radius: 16px; padding: 7px 2px 5px; font-size: 11.5px; transition: background .15s, color .15s;
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 360px) { .tabs { left: 8px; right: 8px; padding: 5px; } .tabs a { font-size: 10.5px; } }
+.tabs a .ic svg { width: 22px; height: 22px; }
+.tabs a[aria-current="page"] { background: var(--brand-soft); color: var(--brand); }
+.tabs a[aria-current="page"] .ic { color: var(--brand); }
+.fab-wrap { bottom: calc(88px + var(--safe-b)); }
+main { padding-bottom: calc(170px + var(--safe-b)); }
+
+/* Réglage du bandeau (Groupe → Apparence) */
+.hdr-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.hdr-pick {
+  border: 2px solid var(--line); background: var(--card); border-radius: var(--r-md); padding: 6px; font-weight: 700; font-size: 13px;
+  display: flex; flex-direction: column; gap: 6px; align-items: stretch; color: var(--ink);
+}
+.hdr-pick i { display: block; height: 26px; border-radius: 8px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+.hdr-pick[aria-pressed="true"] { border-color: var(--brand-2); background: var(--brand-soft); }
+
 /* Logo image carrée (ex. img/logo.jpg) : coins arrondis façon icône d'app */
 .splash-logo, .brand-logo { border-radius: 22%; }

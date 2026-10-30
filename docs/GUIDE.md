@@ -21,8 +21,8 @@ Retour à la [présentation](../README.md) · [Installation](INSTALLATION.md)
 - **% de prises sur les donnes jouées** : nombre de prises du joueur divisé par le nombre de donnes distribuées pendant qu'il était à la table (donnes « tous passent » comprises). Exemple : 2 prises sur 8 donnes = 25 %. Disponible pour la partie en cours, dans le profil (carrière), dans les graphiques et l'export.
 - **Mise à jour** : si une version plus récente est en ligne, un bandeau « Mettre à jour » apparaît. Le bouton **Groupe → Forcer la mise à jour de l'app** vide la mémoire de l'app et recharge la dernière version (les parties et joueurs ne sont pas touchés).
 - **Pendant une partie** (contrée et tarot), un graphique sous les cartes des joueurs suit une statistique au choix, une courbe par joueur, recalculée après chaque donne : % de prises réussies, prises réussies, points moyens par contrat réussi (contrée) ou gain moyen par prise (tarot), contres, belotes, petits au bout, score… Le bouton « Cette partie | Carrière » choisit entre les statistiques de la partie seule et celles de toute la carrière.
-- **Graphiques en direct** : dans l'onglet Graphiques et dans les profils, la partie en cours apparaît comme dernier point, en pointillés (provisoire). Les prises, contres, belotes, etc. y sont comptés tout de suite ; les victoires, places et podiums ne comptent qu'à la fin de la partie.
-- **Onglet Graphiques** : choisissez une statistique dans la liste et touchez les joueurs à comparer (8 au maximum). Une courbe par joueur montre la valeur cumulée après chaque partie du groupe. Touchez la courbe pour lire les valeurs de tous les joueurs à cette partie. Le tableau « Aujourd'hui » donne les valeurs actuelles.
+- **Graphiques en direct** : dans l'onglet Graphes et dans les profils, la partie en cours apparaît comme dernier point, en pointillés (provisoire). Les prises, contres, belotes, etc. y sont comptés tout de suite ; les victoires, places et podiums ne comptent qu'à la fin de la partie.
+- **Onglet Graphes** : choisissez une statistique dans la liste et touchez les joueurs à comparer (8 au maximum). Une courbe par joueur montre la valeur cumulée après chaque partie du groupe. Touchez la courbe pour lire les valeurs de tous les joueurs à cette partie. Le tableau « Aujourd'hui » donne les valeurs actuelles.
 
 ## Règles de comptage
 
@@ -119,7 +119,7 @@ Pour retirer un lien, rouvrez **Liens** et touchez la fiche marquée ✓.
 
 ## Tarot
 
-Le sélecteur **Contrée | Tarot**, en haut des onglets Parties, Joueurs, Graphiques et Historique et dans les profils, choisit le jeu affiché. Les profils des joueurs sont communs aux deux jeux, mais leurs statistiques sont séparées.
+Le sélecteur **Contrée | Tarot**, en haut des onglets Parties, Joueurs, Graphes et Historique et dans les profils, choisit le jeu affiché. Les profils des joueurs sont communs aux deux jeux, mais leurs statistiques sont séparées.
 
 **Une partie** se joue à 3, 4 ou 5 joueurs, touchés dans l'ordre où ils sont assis : l'app indique qui donne. Elle dure soit un **nombre de donnes fixé**, auquel cas elle se termine toute seule, soit en **partie libre**, et on la termine avec « Terminer la partie ». Le gagnant est le 1ᵉʳ au classement ; le podium regroupe les 3 premiers, ex aequo compris.
 
@@ -165,27 +165,31 @@ Les règles par défaut du tarot se règlent dans **Groupe → Règles du tarot*
 
 Le logo s'affiche à l'ouverture de l'app (écran d'accueil animé, puis en haut du menu des groupes). Pour le changer :
 
-- **le plus simple** : remplacer le fichier `img/logo.svg` par votre image, sous le même nom ;
-- **ou** déposer votre image dans `img/` (par exemple `img/logo.png`, carrée de préférence, 512 × 512 pixels) et l'indiquer dans `js/config.js` : `logo: 'img/logo.png'`.
+- **le plus simple** : remplacer le fichier `img/logo.jpg` par votre image, sous le même nom (image carrée, idéalement 640 × 640 pixels ; ses coins sont arrondis automatiquement) ;
+- **ou** déposer votre image dans `img/` (par exemple `img/logo.png`) et l'indiquer dans `js/config.js` : `logo: 'img/logo.png'`. L'ancien logo dessiné est toujours là : `logo: 'img/logo.svg'`.
 
 Les icônes de l'écran d'accueil du téléphone sont dans `icons/` (192, 512 et 180 pixels pour l'iPhone).
 
+### Bandeau du haut
+
+Chacun choisit sur son téléphone la couleur du bandeau du haut : **Groupe → Apparence → Bandeau du haut** (clair, vert, noir, bordeaux, bleu nuit ou sauge). Le logo d'ouverture et le menu des groupes restent toujours sur fond vert.
+
 ### Couleurs et formes de l'app
 
-Tout l'aspect visuel est dans **`css/app.css`**. Le plus simple est de changer les variables du début du fichier (bloc `:root`) :
+Tout l'aspect visuel est dans **`css/app.css`**. Les réglages du design actuel sont regroupés dans le bloc `:root` de la section « DESIGN MODERNE », à la fin du fichier :
 
 | Variable | Rôle | Valeur actuelle |
 |---|---|---|
-| `--brand` | bandeau du haut, titres, boutons (vert tapis de jeu) | `#1d5a3c` |
-| `--brand-2` | liens, boutons secondaires | `#23804f` |
-| `--brand-soft` | fonds pâles, boutons clairs | `#e1f1e6` |
-| `--red` | cœurs et carreaux, erreurs | `#d7263d` |
-| `--gold` | boutons principaux (« Nouvelle partie »…) | `#f2b53a` |
-| `--green` | contrats réussis | `#12936a` |
-| `--paper` | fond des écrans | `#eef3ef` |
+| `--brand` | vert principal : ouverture, boutons, onglet actif | `#1d5a3c` |
+| `--brand-2` | vert des liens et des boutons principaux | `#1f7a4c` |
+| `--brand-soft` | fonds vert pâle, boutons clairs | `#e4f0e7` |
+| `--paper` | fond des écrans (crème) | `#f6f2ea` |
 | `--card` | fond des cartes | `#ffffff` |
-| `--ink` | texte | `#15201a` |
-| `--r-lg`, `--r-md` | arrondi des cartes et boutons | `22px`, `14px` |
-| `--display`, `--body` | polices des titres et du texte | Anybody, Atkinson Hyperlegible |
+| `--line` | fins traits autour des cartes | `#ebe3d6` |
+| `--ink` | texte | `#26221c` |
+| `--muted` | texte secondaire | `#827868` |
+| `--red` | cœurs et carreaux, erreurs (début du fichier) | `#d7263d` |
+| `--r-lg`, `--r-md` | arrondi des cartes et boutons | `18px`, `12px` |
+| `--display`, `--body` | polices des titres et du texte (début du fichier) | Anybody, Atkinson Hyperlegible |
 
-Exemple : remplacer `--brand: #1d5a3c;` par `--brand: #6a1b4d;` rend le bandeau et les titres prune. Pensez aussi à `theme-color` dans `index.html` et `manifest.webmanifest` (couleur de la barre du téléphone). Après une modification, augmentez `VERSION` dans `sw.js` (et `APP_BUILD` dans `js/app.js`) pour que les téléphones prennent la nouvelle version. Les couleurs des courbes sont dans `SERIES_COLORS` (début de `js/app.js`).
+Les couleurs de bandeau proposées sont dans `HEADER_STYLES` (début de `js/app.js`) et dans les lignes `html[data-header="…"]` de `css/app.css`. Après une modification, augmentez `VERSION` dans `sw.js` (et `APP_BUILD` dans `js/app.js`) pour que les téléphones prennent la nouvelle version. Les couleurs des courbes sont dans `SERIES_COLORS` (début de `js/app.js`).
