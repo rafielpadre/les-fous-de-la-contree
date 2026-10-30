@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 16;   // doit correspondre à 'fdc-v16' dans sw.js
-const APP_VERSION = `${APP_BUILD} — règle du contré par partie`;
+const APP_BUILD = 18;   // doit correspondre à 'fdc-v18' dans sw.js
+const APP_VERSION = `${APP_BUILD} — menu d'ouverture des groupes`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -219,6 +219,11 @@ function render() {
     return;
   }
   const r = route();
+  if (ui.launch || r.name === 'start') {
+    app.innerHTML = launchPage();
+    store.setPolling(false);
+    return;
+  }
   ui.bindQueue = [];
   let page;
   switch (r.name) {
@@ -282,6 +287,77 @@ function shell(title, body, { back = null, fab = '', active = '', groupSwitch = 
 }
 
 // ============================================================ ACCUEIL (sans groupe)
+// ------------------------------------------------------------ menu d'ouverture
+/**
+ * Le menu des groupes s'affiche quand on (re)lance l'app après l'avoir fermée.
+ * Verrouiller le téléphone ou passer sur une autre app ne recharge pas la page : on reste où on était.
+ * Si le téléphone recharge la page en gardant la session (mise à jour, mémoire), sessionStorage
+ * se souvient qu'on a déjà passé le menu, et on ne le réaffiche pas.
+ */
+function isColdStart() {
+  try {
+    if (sessionStorage.getItem('fdc:session')) return false;
+    sessionStorage.setItem('fdc:session', '1');
+  } catch { /* stockage indisponible : on considère que c'est un lancement */ }
+  return true;
+}
+
+/** Résumé d'un groupe pour sa carte : joueurs, parties, parties en cours, dernière activité. */
+function groupSummary(g) {
+  const players = store.listIn(g.id, 'player');
+  const games = store.listIn(g.id, 'game');
+  const running = games.filter((x) => (x.type === 'tarot' ? !x.finishedAt : x.winner == null)).length;
+  const last = games.reduce((m, x) => Math.max(m, x.finishedAt || 0, x.startedAt || 0), 0);
+  return { players, games: games.length, running, last };
+}
+
+function launchPage() {
+  const groups = store.listGroups();
+  const active = store.getState().group?.id;
+  const cloud = store.cloudConfigured;
+  const cards = groups.map((g) => {
+    const s = groupSummary(g);
+    const faces = s.players.slice(0, 6).map((p) => avatar(p, 's')).join('');
+    const more = s.players.length > 6 ? `<span class="more">+${s.players.length - 6}</span>` : '';
+    return `<button class="gcard ${g.id === active ? 'last' : ''}" data-act="launch-open" data-id="${g.id}">
+      <span class="gc-top"><span class="gc-name">${esc(g.name)}</span>${s.running ? `<span class="tag live">${s.running} en cours</span>` : ''}</span>
+      <span class="gc-faces">${faces}${more}${!s.players.length ? '<span class="small muted">Pas encore de joueurs</span>' : ''}</span>
+      <span class="gc-meta">${s.players.length} joueur${s.players.length > 1 ? 's' : ''} · ${s.games} partie${s.games > 1 ? 's' : ''}${s.last ? ` · dernière le ${date(s.last)}` : ''}</span>
+    </button>`;
+  }).join('');
+  return `
+  <div class="welcome launch">
+    <div class="top felt">
+      <p class="logo"><small>Les Fous de</small>la Contrée</p>
+      <div class="suits-line">♠<span class="r">♥</span>♣<span class="r">♦</span></div>
+    </div>
+    <div class="body stack">
+      <h2 style="margin:4px 0 0">Choisissez votre groupe</h2>
+      <div class="gcards">${cards}</div>
+      <details class="panel launch-new">
+        <summary>Créer un nouveau groupe</summary>
+        <input class="input" id="launch-name" placeholder="Nom du groupe (ex. Les jeudis de Marcel)" maxlength="60" style="margin-top:10px">
+        <button class="btn gold block" style="margin-top:10px" data-act="launch-create">Créer le groupe</button>
+      </details>
+      ${cloud ? `<details class="panel launch-new">
+        <summary>Rejoindre un groupe avec un code</summary>
+        <input class="input" id="launch-code" placeholder="Code à 8 caractères" autocomplete="off" autocapitalize="characters" maxlength="12"
+          style="margin-top:10px;text-transform:uppercase;letter-spacing:.12em;font-weight:700">
+        <button class="btn block" style="margin-top:10px" data-act="launch-join">Rejoindre</button>
+      </details>` : ''}
+    </div>
+  </div>`;
+}
+
+/** Quitte le menu d'ouverture et affiche le groupe choisi. */
+function leaveLaunch() {
+  ui.launch = false;
+  ui.chartSel = null;
+  if (currentHash() === '#/' || currentHash() === '' || route().name === 'start') { if (!EMBED) history.replaceState(null, '', '#/'); else memHash = '#/'; }
+  render();
+  window.scrollTo(0, 0);
+}
+
 function welcomePage() {
   const cloud = store.cloudConfigured;
   return `
@@ -871,7 +947,7 @@ function groupsSheet() {
   const groups = store.listGroups();
   const active = store.getState().group?.id;
   const cloud = store.cloudConfigured;
-  return `${sheetHead('Mes groupes')}<div class="sheet-body">
+  return `${sheetHead('Mes groupes', '<button class="link" data-act="launch-menu" style="margin-right:8px">Menu d\'accueil</button>')}<div class="sheet-body">
     <ul class="list" style="margin-top:4px">
       ${groups.map((g) => `<li><button class="item" data-act="switch-group" data-id="${g.id}">
         <span class="gdot ${g.id === active ? 'on' : ''}"></span>
@@ -1477,7 +1553,9 @@ function previewHtml() {
   return `<div class="preview ${res.made ? 'ok' : 'ko'}">
     <div class="big">${res.made ? 'Contrat réussi' : 'Contrat chuté'} :
       <span class="p0">Bleus +${res.scores[0]}</span> · <span class="p1">Rouges +${res.scores[1]}</span></div>
-    <div class="small">${explain(res)}</div></div>`;
+    <div class="small">${explain(res)}</div>
+    ${dr.coincheBy && !game.rules.contreAll ? `<div class="small contre-hint">Cette partie compte les contres avec l'ancienne règle.
+      <button class="link" data-act="toggle-contre" data-id="${game.id}">Passer à la règle officielle</button></div>` : ''}</div>`;
 }
 
 function updateHandFooter() {
@@ -2433,6 +2511,7 @@ async function handle(act, el, id) {
       });
       if (!ok) return;
       store.patch(id, { rules: { ...g.rules, contreAll: to } });
+      if (ui.sheet?.game?.id === id) { ui.sheet.game = store.get(id); renderSheet(); }   // saisie ouverte
       return afterHandChange(id, 'Partie recalculée');   // le gagnant peut changer
     }
     case 'rename-game': {
@@ -2484,6 +2563,41 @@ async function handle(act, el, id) {
       toast('Lien retiré');
       return renderSheet();
     case 'groups': return openSheet('groups', {});
+    case 'launch-open':
+      ui.launch = false;
+      store.switchGroup(id);
+      return leaveLaunch();
+    case 'launch-create': {
+      const name = document.getElementById('launch-name').value.trim();
+      if (!name) return toast('Donnez un nom au groupe');
+      el.disabled = true;
+      ui.launch = false;
+      await store.createGroup(name);
+      leaveLaunch();
+      return toast(`Groupe « ${name} » créé`);
+    }
+    case 'launch-join': {
+      const code = document.getElementById('launch-code').value.trim();
+      if (code.length < 6) return toast('Le code fait 8 caractères');
+      el.disabled = true;
+      el.textContent = 'Connexion…';
+      try {
+        ui.launch = false;
+        await store.joinGroup(code);
+        leaveLaunch();
+        return toast(`Bienvenue dans « ${store.getState().group.name} »`);
+      } catch (e) {
+        ui.launch = true;
+        el.disabled = false;
+        el.textContent = 'Rejoindre';
+        return toast(/inconnu/i.test(e.message) ? 'Code inconnu, vérifiez-le' : `Connexion impossible : ${e.message}`);
+      }
+    }
+    case 'launch-menu':
+      closeSheet();
+      ui.launch = true;
+      render();
+      return window.scrollTo(0, 0);
     case 'switch-group':
       closeSheet();
       ui.chartSel = null;
@@ -2846,12 +2960,15 @@ store.subscribe((_, dataChanged) => {
   }
   version++;
   // Ne pas reconstruire la page pendant une saisie dans un champ du formulaire d'accueil
-  if (!store.getState().group && document.activeElement?.tagName === 'INPUT') return;
+  if ((!store.getState().group || ui.launch) && document.activeElement?.tagName === 'INPUT') return;
   render();
 });
 
 store.load();
 if (EMBED && !store.getState().group) store.addGroups(buildDemoGroups(store.uuid));
+// Menu d'ouverture : quand on relance l'app (pas sur un lien direct vers une partie ou un joueur)
+ui.launch = isColdStart() && !!store.getState().group && ['home', 'start'].includes(route().name)
+  && !(location.hash || '').startsWith('#join=');
 if (!EMBED && location.hash.startsWith('#join=')) handleJoinLink();
 else render();
 store.startPolling();

@@ -305,7 +305,11 @@ async function syncOne(s) {
     console.warn('Synchro', s.group.name, e);
     s.lastError = e.status === 404
       ? 'Serveur non configuré (fonctions SQL absentes ?)'
-      : (e.message?.includes('Failed to fetch') ? 'Serveur injoignable' : e.message);
+      // « Failed to fetch » (Chrome/Android), « Load failed » (iPhone), « NetworkError » (Firefox) :
+      // réseau coupé ou instable ; l'app réessaie toute seule quelques secondes plus tard.
+      : (/Failed to fetch|Load failed|NetworkError|network connection was lost/i.test(e.message || '')
+        ? 'Connexion au serveur interrompue — nouvel essai automatique'
+        : e.message);
     if (/inconnu/i.test(e.message || '')) s.lastError = 'Ce groupe n\'existe plus sur le serveur';
     return false;
   }

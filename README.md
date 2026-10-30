@@ -139,7 +139,7 @@ Notations utilisées :
 
 **Exemple 3.** Annonce de 100 contrée qui chute, sans belote : la défense marque 2 × (160 + 100) = 520, l'attaque 0. Sans contre : 160 + 100 = 260.
 
-L'ancienne règle (seule l'annonce est multipliée et chacun garde ses points : exemple 2 → 2×100 + 100 + 20 = 320 pour l'attaque, 60 pour la défense) reste disponible en décochant « Contré : le gagnant prend tout ». Les parties lancées avant la version 15 gardent l'ancienne règle. En bas de l'écran d'une partie, le cadre **Donnes contrées** indique la règle utilisée par cette partie ; **Passer à la règle officielle** (ou l'inverse) recalcule toutes ses donnes.
+L'ancienne règle (seule l'annonce est multipliée et chacun garde ses points : exemple 2 → 2×100 + 100 + 20 = 320 pour l'attaque, 60 pour la défense) reste disponible en décochant « Contré : le gagnant prend tout ». Les parties lancées avant la version 15 gardent l'ancienne règle. En bas de l'écran d'une partie, le cadre **Donnes contrées** indique la règle utilisée par cette partie ; **Passer à la règle officielle** (ou l'inverse) recalcule toutes ses donnes. Le même bouton apparaît aussi dans la saisie d'une donne contrée quand la partie utilise l'ancienne règle.
 
 Plusieurs règles sont réglables dans **Groupe → Règles du groupe** :
 
@@ -199,6 +199,8 @@ Pour retirer un lien, rouvrez **Liens** et touchez la fiche marquée ✓.
 
 **Renommer un groupe.** Onglet **Groupe**, bouton **Renommer** à côté du nom. Le nouveau nom arrive sur les autres téléphones à la synchronisation suivante (quelques secondes), y compris chez ceux qui rejoignent le groupe plus tard. Le code d'invitation ne change pas. Techniquement, le nouveau nom est rangé dans les réglages du groupe, qui se synchronisent comme les parties : aucune modification de la base Supabase n'est nécessaire.
 
+**Menu d'ouverture.** Quand on lance l'app après l'avoir fermée, elle affiche la liste de vos groupes : touchez celui où vous jouez. Chaque carte indique les joueurs, le nombre de parties, les parties en cours et la date de la dernière partie ; le dernier groupe utilisé est entouré. Le même écran permet de créer un groupe ou d'en rejoindre un avec un code. Verrouiller le téléphone ou passer sur une autre app ne fait pas revenir ce menu : on retrouve le groupe et la partie qu'on regardait. Pour revenir au menu sans fermer l'app : nom du groupe en haut de l'onglet Parties → **Menu d'accueil**.
+
 ## Tarot
 
 Le sélecteur **Contrée | Tarot**, en haut des onglets Parties, Joueurs, Graphiques et Historique et dans les profils, choisit le jeu affiché. Les profils des joueurs sont communs aux deux jeux, mais leurs statistiques sont séparées.
@@ -236,6 +238,25 @@ La somme *D* de ces éléments est retirée à chaque défenseur. Le preneur gag
 Les règles par défaut du tarot se règlent dans **Groupe → Règles du tarot**.
 
 ---
+
+## Modifier le design
+
+Tout l'aspect visuel est dans **`css/app.css`**. Le plus simple est de changer les variables du début du fichier (bloc `:root`) :
+
+| Variable | Rôle | Valeur actuelle |
+|---|---|---|
+| `--blue` | bandeau du haut, titres, équipe Bleus | `#24358a` |
+| `--blue-2` | liens, boutons secondaires | `#3a50c2` |
+| `--red` | cœurs/carreaux, équipe Rouges, erreurs | `#d7263d` |
+| `--gold` | boutons principaux (« Nouvelle partie »…) | `#f2b53a` |
+| `--green` | contrats réussis | `#12936a` |
+| `--paper` | fond des écrans | `#eef0f7` |
+| `--card` | fond des cartes | `#ffffff` |
+| `--ink` | texte | `#17182b` |
+| `--r-lg`, `--r-md` | arrondi des cartes et boutons | `22px`, `14px` |
+| `--display`, `--body` | polices des titres et du texte | Anybody, Atkinson Hyperlegible |
+
+Exemple : remplacer `--blue: #24358a;` par `--blue: #0f5c4d;` rend le bandeau et les titres vert sapin. Après une modification, augmentez `VERSION` dans `sw.js` (et `APP_BUILD` dans `js/app.js`) pour que les téléphones prennent la nouvelle version. Les couleurs des courbes sont dans `SERIES_COLORS` (début de `js/app.js`), l'icône de l'app dans `icons/`.
 
 ## Mettre à jour l'application
 
