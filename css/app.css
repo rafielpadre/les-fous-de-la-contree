@@ -690,3 +690,6 @@ html.splashing, html.splashing body { background: var(--brand); }
 .lightbox span { opacity: .7; }
 .lightbox.out { opacity: 0; transition: opacity .2s; }
 @keyframes lb-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Logo image carrée (ex. img/logo.jpg) : coins arrondis façon icône d'app */
+.splash-logo, .brand-logo { border-radius: 22%; }

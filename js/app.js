@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 20;   // doit correspondre à 'fdc-v20' dans sw.js
-const APP_VERSION = `${APP_BUILD} — photo en grand, logo plus long`;
+const APP_BUILD = 21;   // doit correspondre à 'fdc-v21' dans sw.js
+const APP_VERSION = `${APP_BUILD} — logo Tutu tutututu`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
