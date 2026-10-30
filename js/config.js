@@ -14,4 +14,7 @@
 window.CONTREE_CONFIG = {
   supabaseUrl: 'https://yqcttetjbnfldbsammbg.supabase.co',
   supabaseKey: 'sb_publishable_1yhsc3Ixu-X23CsAeGu-Ow_ebPJaAdM',
+  // Logo affiché à l'ouverture de l'app : remplacez img/logo.svg par votre image
+  // (même nom), ou mettez ici le chemin d'une autre image, ex. 'img/logo.png'.
+  logo: 'img/logo.svg',
 };

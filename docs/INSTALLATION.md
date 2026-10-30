@@ -1,0 +1,129 @@
+# Installer Les Fous de la Contrée
+
+Ce guide explique comment mettre l'application en ligne pour un groupe, une seule fois, par une seule personne
+(environ 20 minutes, coût : 0 €). Pour découvrir l'application elle-même, voir le [README](../README.md) ;
+pour son fonctionnement détaillé (règles, statistiques, tarot…), le [guide d'utilisation](GUIDE.md).
+
+---
+
+## Vue d'ensemble
+
+```
+ Téléphone A ─┐                         ┌─ Supabase (base de données gratuite)
+ Téléphone B ─┼── app web (GitHub Pages)┤   tables protégées, accès par code de groupe
+ Téléphone C ─┘                         └─
+```
+
+- **GitHub Pages** héberge les fichiers de l'application (gratuit).
+- **Supabase** stocke les données du groupe (gratuit jusqu'à 500 Mo, très largement suffisant).
+- Chaque téléphone garde une copie locale : on peut saisir des donnes sans réseau, elles partent dès que le réseau revient.
+
+
+## Étape 1 — Créer la base de données (Supabase)
+
+1. Allez sur <https://supabase.com> et créez un compte (le plus simple : « Continue with GitHub » une fois l'étape 2 faite, ou avec votre e-mail).
+2. Cliquez **New project**.
+   - *Name* : `fous-de-la-contree`
+   - *Database Password* : générez-en un et gardez-le de côté (l'application n'en a pas besoin).
+   - *Region* : une région en Europe, par exemple **West EU (Paris)**.
+   - Validez avec **Create new project**, puis attendez 1 à 2 minutes.
+3. Dans le menu de gauche, ouvrez **SQL Editor**, puis **New query**.
+4. Ouvrez le fichier `supabase/schema.sql` de ce dossier, copiez **tout** son contenu, collez-le, puis cliquez **Run**.
+   Le message attendu est « Success. No rows returned ».
+5. Récupérez les deux informations de connexion. Cliquez sur le bouton **Connect** en haut de la page, ou allez dans **Project Settings → API Keys** :
+   - **Project URL**, du type `https://abcdefghijkl.supabase.co` ;
+   - la clé **publishable**, qui commence par `sb_publishable_…`. Si vous ne voyez que l'ancien format, prenez la clé **anon public**, qui commence par `eyJ…`.
+
+   ⚠️ Ne prenez jamais la clé **secret** ou **service_role**.
+
+## Étape 2 — Renseigner la configuration
+
+Ouvrez `js/config.js` avec un éditeur de texte (Bloc-notes, TextEdit en mode texte brut, VS Code…) et complétez-le :
+
+```js
+window.CONTREE_CONFIG = {
+  supabaseUrl: 'https://abcdefghijkl.supabase.co',
+  supabaseKey: 'sb_publishable_xxxxxxxxxxxxxxxx',
+};
+```
+
+C'est le seul fichier à modifier. Pour notre groupe, il est **déjà rempli** dans chaque version livrée : il suffit de tout remplacer sur GitHub, `js/config.js` compris.
+
+## Étape 3 — Mettre l'application en ligne (GitHub Pages)
+
+1. Créez un compte sur <https://github.com> si besoin.
+2. Cliquez **+ → New repository**.
+   - *Repository name* : `fous-de-la-contree`
+   - Laissez **Public** (obligatoire pour GitHub Pages gratuit).
+   - Validez avec **Create repository**.
+3. Sur la page du dépôt vide, cliquez **uploading an existing file**.
+   Glissez-déposez **le contenu** du dossier : `index.html`, `manifest.webmanifest`, `sw.js`, `README.md`, ainsi que les dossiers `css`, `js`, `img`, `fonts`, `icons`, `docs`, `supabase` et `tests`. Cliquez ensuite **Commit changes**.
+4. Allez dans **Settings → Pages**.
+   - *Source* : **Deploy from a branch**
+   - *Branch* : **main**, dossier **/ (root)**
+   - Cliquez **Save**.
+5. Après 1 à 2 minutes, l'adresse s'affiche en haut de cette page : `https://VOTRE-PSEUDO.github.io/fous-de-la-contree/`.
+
+> Le dépôt étant public, `config.js` est visible de tous. Ce n'est pas un problème : la clé publique ne donne accès qu'aux 4 fonctions prévues, et chacune exige le **code du groupe**. C'est ce code qu'il faut garder entre joueurs.
+
+## Étape 4 — Installer sur les téléphones
+
+Ouvrez l'adresse obtenue à l'étape 3 sur chaque téléphone :
+
+- **iPhone (Safari)** : bouton **Partager**, puis **Sur l'écran d'accueil**.
+- **Android (Chrome)** : menu **⋮**, puis **Installer l'application** ou **Ajouter à l'écran d'accueil**.
+
+L'icône « Fous Contrée » apparaît alors comme une application normale.
+
+## Étape 5 — Créer le groupe et inviter les joueurs
+
+1. Sur votre téléphone : **Créer un groupe** avec un nom. Un code de 8 caractères est créé.
+2. Onglet **Groupe → Inviter** : envoyez le lien par SMS ou WhatsApp. Le lien ouvre l'app avec le code déjà rempli. Le code peut aussi se saisir à la main via **Rejoindre un groupe**.
+3. Créez les profils des joueurs (onglet **Joueurs**), avec une photo si vous voulez.
+
+
+## Mettre à jour l'application
+
+Remplacez tous les fichiers sur GitHub par ceux de la nouvelle version (`js/config.js` est déjà rempli). Si vous modifiez vous-même un fichier, changez aussi la ligne `const VERSION = 'fdc-vN';` dans `sw.js` (en augmentant N) et `APP_BUILD` dans `js/app.js`. Les téléphones prendront la nouvelle version à l'ouverture suivante.
+
+## Éviter la mise en veille du serveur
+
+Sur l'offre gratuite, Supabase met le projet en pause après 7 jours sans activité. Les données sont conservées. Pour réveiller le projet, cliquez **Restore** sur sa page Supabase ; en attendant, l'app continue de fonctionner en local et se resynchronise après.
+
+Pour éviter la pause, le fichier `.github/workflows/keepalive.yml` envoie une requête tous les 3 jours. Pour l'activer :
+
+1. Créez le fichier sur GitHub via **Add file → Create new file**, avec le chemin `.github/workflows/keepalive.yml`. Les dossiers commençant par un point sont souvent ignorés par le glisser-déposer.
+2. Ajoutez les secrets `SUPABASE_URL`, `SUPABASE_KEY` et `GROUP_CODE` dans **Settings → Secrets and variables → Actions**.
+
+## Dépannage
+
+| Symptôme | Cause probable |
+|---|---|
+| Badge « Erreur » rouge en haut | Touchez-le pour réessayer. Vérifiez l'URL et la clé dans `config.js`. |
+| « Serveur non configuré » | Le script `schema.sql` n'a pas été exécuté entièrement. |
+| « Code de groupe inconnu » | Code mal recopié : il n'y a ni 0, ni O, ni 1, ni I dans les codes. |
+| L'app n'a pas pris une modification | Vérifiez le numéro en bas de l'onglet Groupe, puis touchez « Forcer la mise à jour de l'app ». |
+| Serveur injoignable depuis plusieurs jours | Projet Supabase en pause : cliquez **Restore** sur sa page. |
+
+## Mode local
+
+Sans configuration, l'app fonctionne entièrement sur un seul téléphone (« mode local »). Le bouton « Essayer avec des données de démonstration » remplit l'app avec 6 joueurs et une douzaine de parties fictives.
+
+## Développement
+
+- Tests du calcul des points et des statistiques : `node --test tests/scoring.test.js tests/stats.test.js tests/tarot.test.js`
+- Aucune étape de compilation : HTML, CSS et JavaScript (modules ES) servis tels quels.
+
+```
+index.html            page unique
+css/app.css           styles
+js/config.js          configuration du serveur (à remplir)
+js/scoring.js         calcul des points de la contrée
+js/tarot.js           calcul des points du tarot
+js/tarot-stats.js     statistiques du tarot
+js/stats.js           statistiques
+js/store.js           stockage local + synchronisation
+js/app.js             interface
+supabase/schema.sql   base de données et sécurité
+sw.js                 fonctionnement hors ligne
+```

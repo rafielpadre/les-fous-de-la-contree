@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 18;   // doit correspondre à 'fdc-v18' dans sw.js
-const APP_VERSION = `${APP_BUILD} — menu d'ouverture des groupes`;
+const APP_BUILD = 19;   // doit correspondre à 'fdc-v19' dans sw.js
+const APP_VERSION = `${APP_BUILD} — thème vert, couleurs d'équipe, logo`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -29,7 +29,32 @@ const pct = (v) => (v == null ? '–' : `${Math.round(v)} %`);
 const num = (v, d = 0) => (v == null ? '–' : v.toLocaleString('fr-FR', { maximumFractionDigits: d }));
 const date = (t) => (t ? new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const dateTime = (t) => (t ? new Date(t).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
-const TEAM_NAMES = ['Bleus', 'Rouges'];
+// ---------- Couleurs des équipes (contrée), choisies à chaque partie
+// name : nom de l'équipe (« Victoire des Verts ») ; c : couleur ; c2 : plus claire ; soft : fond pâle.
+const TEAM_PALETTE = {
+  bleu: { name: 'Bleus', c: '#2f55d4', c2: '#5376ea', soft: '#e3e9fd' },
+  rouge: { name: 'Rouges', c: '#d7263d', c2: '#ef4a5e', soft: '#fde6e9' },
+  vert: { name: 'Verts', c: '#14894f', c2: '#2fae6c', soft: '#dff4e7' },
+  orange: { name: 'Orange', c: '#df5f12', c2: '#f5853d', soft: '#fdeadb' },
+  violet: { name: 'Violets', c: '#7238c9', c2: '#9160e0', soft: '#efe6fb' },
+  rose: { name: 'Roses', c: '#d02f7a', c2: '#ea5c9a', soft: '#fce4ef' },
+  jaune: { name: 'Jaunes', c: '#b98500', c2: '#dba51a', soft: '#fdf2cf' },
+  turquoise: { name: 'Turquoise', c: '#0b8797', c2: '#20aabd', soft: '#d9f3f6' },
+  noir: { name: 'Noirs', c: '#262a33', c2: '#4b5160', soft: '#e6e8ec' },
+};
+const DEFAULT_TEAM_COLORS = ['bleu', 'rouge'];
+/** Clés de couleur des deux équipes d'une partie (anciennes parties : bleu et rouge). */
+function teamKeys(g) {
+  const k = g?.colors;
+  return Array.isArray(k) && TEAM_PALETTE[k[0]] && TEAM_PALETTE[k[1]] && k[0] !== k[1] ? k : DEFAULT_TEAM_COLORS;
+}
+const teamCol = (g, ti) => TEAM_PALETTE[teamKeys(g)[ti]];
+const teamName = (g, ti) => teamCol(g, ti).name;
+/** Variables CSS --team0… / --team1… à poser sur un élément pour colorer la partie. */
+const teamVars = (g) => [0, 1].map((ti) => {
+  const c = teamCol(g, ti);
+  return `--team${ti}:${c.c};--team${ti}-2:${c.c2};--team${ti}-soft:${c.soft}`;
+}).join(';');
 const TEAM_PIPS = ['♠', '♥'];
 const AV_COLORS = ['#3a50c2', '#d7263d', '#12936a', '#b07800', '#7b3fc4', '#e0661b', '#0f8fa8', '#c2337a'];
 
@@ -287,6 +312,31 @@ function shell(title, body, { back = null, fab = '', active = '', groupSwitch = 
 }
 
 // ============================================================ ACCUEIL (sans groupe)
+// ------------------------------------------------------------ logo et écran d'ouverture
+// Logo de l'app : fichier img/logo.svg par défaut ; pour en changer, remplacez ce fichier
+// ou indiquez un autre chemin dans js/config.js (logo: 'img/mon-logo.png').
+const LOGO = window.CONTREE_CONFIG?.logo || 'img/logo.svg';
+const logoImg = (cls = 'brand-logo') => `<img class="${cls}" src="${esc(LOGO)}" alt="" onerror="this.remove()">`;
+
+/** Écran d'ouverture : le logo s'affiche un instant au lancement (touchez pour passer). */
+function showSplash() {
+  const el = document.createElement('div');
+  el.className = 'splash felt';
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `${logoImg('splash-logo')}<p class="splash-name"><small>Les Fous de</small>la Contrée</p>`;
+  document.body.appendChild(el);
+  const quick = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  let gone = false;
+  const close = () => {
+    if (gone) return;
+    gone = true;
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 400);
+  };
+  el.addEventListener('click', close);
+  setTimeout(close, quick ? 500 : 1400);
+}
+
 // ------------------------------------------------------------ menu d'ouverture
 /**
  * Le menu des groupes s'affiche quand on (re)lance l'app après l'avoir fermée.
@@ -327,7 +377,8 @@ function launchPage() {
   }).join('');
   return `
   <div class="welcome launch">
-    <div class="top felt">
+    <div class="top felt brand-top">
+      ${logoImg()}
       <p class="logo"><small>Les Fous de</small>la Contrée</p>
       <div class="suits-line">♠<span class="r">♥</span>♣<span class="r">♦</span></div>
     </div>
@@ -362,7 +413,8 @@ function welcomePage() {
   const cloud = store.cloudConfigured;
   return `
   <div class="welcome">
-    <div class="top felt">
+    <div class="top felt brand-top">
+      ${logoImg()}
       <p class="logo"><small>Les Fous de</small>la Contrée</p>
       <div class="suits-line">♠<span class="r">♥</span>♣<span class="r">♦</span></div>
     </div>
@@ -464,20 +516,20 @@ function gameCard(e) {
   const g = e.game;
   const lead = e.totals[0] === e.totals[1] ? -1 : e.totals[0] > e.totals[1] ? 0 : 1;
   const status = e.winner !== null
-    ? `Victoire des ${TEAM_NAMES[e.winner]} · ${date(g.finishedAt || g.startedAt)}`
+    ? `Victoire des ${teamName(g, e.winner)} · ${date(g.finishedAt || g.startedAt)}`
     : `${e.hands.length} donne${e.hands.length > 1 ? 's' : ''} · objectif ${g.rules.target}`;
   return `
-    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px">
+    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px;${teamVars(g)}">
       ${titleLine(g)}
       <div class="row">
         <div class="av-pair">${g.teams[0].map((id) => avatar(P(id), 's')).join('')}</div>
         <div style="flex:1;min-width:0">
-          <div class="small" style="font-weight:700;color:var(--blue)">${teamNames(g.teams[0])}</div>
-          <div class="small" style="font-weight:700;color:var(--red)">${teamNames(g.teams[1])}</div>
+          <div class="small" style="font-weight:700;color:var(--team0)">${teamNames(g.teams[0])}</div>
+          <div class="small" style="font-weight:700;color:var(--team1)">${teamNames(g.teams[1])}</div>
         </div>
         <div style="text-align:right;font:900 22px/1.05 var(--display);font-variant-numeric:tabular-nums">
-          <div style="color:var(--blue);${lead === 1 ? 'opacity:.55' : ''}">${e.totals[0]}</div>
-          <div style="color:var(--red);${lead === 0 ? 'opacity:.55' : ''}">${e.totals[1]}</div>
+          <div style="color:var(--team0);${lead === 1 ? 'opacity:.55' : ''}">${e.totals[0]}</div>
+          <div style="color:var(--team1);${lead === 0 ? 'opacity:.55' : ''}">${e.totals[1]}</div>
         </div>
       </div>
       <div class="small muted" style="margin-top:8px">${status}</div>
@@ -512,7 +564,7 @@ function gamePage(id) {
 
   if (e.winner !== null) {
     body += `<div class="panel" style="margin-top:14px;text-align:center">
-      <h3 style="color:var(--${e.winner ? 'red' : 'blue'})">Victoire des ${TEAM_NAMES[e.winner]} : ${teamNames(g.teams[e.winner])}</h3>
+      <h3 style="color:var(--team${e.winner})">Victoire des ${teamName(g, e.winner)} : ${teamNames(g.teams[e.winner])}</h3>
       <button class="btn gold block" data-act="rematch" data-id="${g.id}">Revanche avec les mêmes équipes</button>
     </div>`;
   }
@@ -567,6 +619,7 @@ function gamePage(id) {
 
   const fab = e.winner === null
     ? `<button class="btn gold block" data-act="new-hand" data-id="${g.id}">Nouvelle donne</button>` : '';
+  body = `<div style="${teamVars(g)}">${body}</div>`;   // couleurs des équipes de cette partie
   return shell(esc(gameTitle(g) || (e.winner !== null ? 'Partie terminée' : 'Partie en cours')), body, { back: '#/', fab, active: 'home' });
 }
 
@@ -1038,7 +1091,7 @@ function gameLiveChart(e, tarot) {
       }));
     } else {
       series = [0, 1].map((ti) => ({
-        id: `t${ti}`, name: TEAM_NAMES[ti], color: ti ? '#d7263d' : '#3a50c2', values: [0, ...rows.map((r) => r.totals[ti])], played: all,
+        id: `t${ti}`, name: teamName(g, ti), color: teamCol(g, ti).c, values: [0, ...rows.map((r) => r.totals[ti])], played: all,
       }));
       ref = { value: g.rules.target, label: `Objectif ${g.rules.target}` };
     }
@@ -1129,12 +1182,12 @@ function gameSummary(ctx, pid, tarot) {
   const status = e.winner === null ? 'En cours' : e.winner === ti ? 'Gagnée' : 'Perdue';
   return `<h2>La partie</h2>
     <div class="kpis">
-      <div class="kpi ${ti ? 'red' : 'blue'}"><div class="v">${e.totals[ti]}</div><div class="l">points de son équipe</div></div>
+      <div class="kpi"><div class="v" style="color:${teamCol(e.game, ti).c}">${e.totals[ti]}</div><div class="l">points de son équipe</div></div>
       <div class="kpi"><div class="v">${e.totals[1 - ti]}</div><div class="l">points adverses</div></div>
       <div class="kpi ${status === 'Gagnée' ? 'green' : status === 'Perdue' ? 'red' : ''}"><div class="v" style="font-size:22px">${status}</div><div class="l">objectif ${e.game.rules.target}</div></div>
     </div>
     <div class="panel" style="margin-top:10px"><dl class="dl">
-      <dt>Partenaire</dt><dd>${esc(P(partner).name)} (${TEAM_NAMES[ti]})</dd>
+      <dt>Partenaire</dt><dd>${esc(P(partner).name)} (${teamName(e.game, ti)})</dd>
       <dt>Adversaires</dt><dd>${teamNames(e.game.teams[1 - ti])}</dd>
       <dt>Commencée le</dt><dd>${dateTime(e.game.startedAt)}</dd>
     </dl></div>`;
@@ -1412,7 +1465,9 @@ function renderSheet(opening = false) {
   const html = kind === 'hand' ? handSheet() : kind === 'newGame' ? newGameSheet() : kind === 'player' ? playerSheet()
     : kind === 'thand' ? tarotHandSheet() : kind === 'tnewGame' ? tarotNewGameSheet()
     : kind === 'link' ? linkSheet() : kind === 'groups' ? groupsSheet() : kind === 'import' ? importSheet() : '';
-  sheetRoot.innerHTML = `<div class="scrim ${opening ? 'in' : ''}" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  // Saisie d'une donne / nouvelle partie : couleurs des équipes de la partie
+  const tv = kind === 'hand' ? teamVars(ui.sheet.game) : kind === 'newGame' ? teamVars(ui.sheet.draft) : '';
+  sheetRoot.innerHTML = `<div class="scrim ${opening ? 'in' : ''}" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true" style="${tv}">${html}</div></div>`;
   document.body.style.overflow = 'hidden';
   const body = sheetRoot.querySelector('.sheet-body');
   if (body) body.scrollTop = prevScroll;
@@ -1552,7 +1607,7 @@ function previewHtml() {
   const res = scoreHand(draftToHand(dr), game.teams, game.rules);
   return `<div class="preview ${res.made ? 'ok' : 'ko'}">
     <div class="big">${res.made ? 'Contrat réussi' : 'Contrat chuté'} :
-      <span class="p0">Bleus +${res.scores[0]}</span> · <span class="p1">Rouges +${res.scores[1]}</span></div>
+      <span class="p0">${teamName(game, 0)} +${res.scores[0]}</span> · <span class="p1">${teamName(game, 1)} +${res.scores[1]}</span></div>
     <div class="small">${explain(res)}</div>
     ${dr.coincheBy && !game.rules.contreAll ? `<div class="small contre-hint">Cette partie compte les contres avec l'ancienne règle.
       <button class="link" data-act="toggle-contre" data-id="${game.id}">Passer à la règle officielle</button></div>` : ''}</div>`;
@@ -1622,10 +1677,19 @@ function newGameSheet() {
   let html = sheetHead('Nouvelle partie');
   html += `<div class="sheet-body">
     ${titleField(dr)}
-    <p class="small muted" style="margin:16px 0 10px">Touchez les joueurs dans l'ordre : les deux premiers forment les Bleus, les deux suivants les Rouges.</p>
+    <p class="small muted" style="margin:16px 0 10px">Touchez les joueurs dans l'ordre : les deux premiers forment les ${teamName(dr, 0)}, les deux suivants les ${teamName(dr, 1)}.</p>
     <div class="slots">
-      <div class="slot-team t0"><h3>Bleus ♠</h3>${slot(0)}${slot(1)}</div>
-      <div class="slot-team t1"><h3>Rouges ♥</h3>${slot(2)}${slot(3)}</div>
+      <div class="slot-team t0"><h3>${teamName(dr, 0)} ♠</h3>${slot(0)}${slot(1)}</div>
+      <div class="slot-team t1"><h3>${teamName(dr, 1)} ♥</h3>${slot(2)}${slot(3)}</div>
+    </div>
+    <div class="field"><span class="lab">Couleurs des équipes</span>
+      ${[0, 1].map((ti) => `<div class="swatches t${ti}" role="group" aria-label="Couleur de l'équipe ${ti + 1}">
+        <span class="sw-lab">Équipe ${ti + 1}</span>
+        ${Object.entries(TEAM_PALETTE).map(([k, c]) => {
+          const taken = teamKeys(dr)[1 - ti] === k;
+          return `<button class="sw" data-act="team-color" data-t="${ti}" data-v="${k}" style="--c:${c.c}" aria-pressed="${teamKeys(dr)[ti] === k}"
+            ${taken ? 'disabled' : ''} title="${c.name}" aria-label="${c.name}"></button>`;
+        }).join('')}</div>`).join('')}
     </div>
     <div class="row" style="margin-top:10px"><button class="btn light" data-act="shuffle" ${full ? '' : 'disabled'} style="flex:1">Tirer les équipes au sort</button></div>
     <div class="field"><span class="lab">Joueurs</span><div class="pick">
@@ -1646,8 +1710,8 @@ function newGameSheet() {
   return html;
 }
 
-function startGame(teams, rules, title = '') {
-  const id = store.put('game', { teams, rules, title: title.trim().slice(0, 50), startedAt: Date.now(), finishedAt: null, winner: null });
+function startGame(teams, rules, title = '', colors = DEFAULT_TEAM_COLORS) {
+  const id = store.put('game', { teams, rules, colors: [...colors], title: title.trim().slice(0, 50), startedAt: Date.now(), finishedAt: null, winner: null });
   closeSheet();
   go(`#/game/${id}`);
 }
@@ -1703,11 +1767,11 @@ function showWin(game, res) {
     const red = s === '♥' || s === '♦';
     return `<i style="left:${Math.random() * 100}%;color:${red ? '#ef4a5e' : '#fff'};animation-duration:${2.4 + Math.random() * 2.5}s;animation-delay:${Math.random() * 1.2}s;--rot:${Math.random() * 720 - 360}deg">${s}</i>`;
   }).join('');
-  overlayRoot.innerHTML = `<div class="win felt" style="${w ? 'background-color:var(--red)' : ''}" role="dialog" aria-modal="true">
+  overlayRoot.innerHTML = `<div class="win felt" style="background-color:${teamCol(game, w).c}" role="dialog" aria-modal="true">
     <div class="rain">${pieces}</div>
     <div class="box">
       <div class="av-pair" style="justify-content:center">${game.teams[w].map((pid) => avatar(P(pid), 'l')).join('')}</div>
-      <p class="trophy">Victoire des ${TEAM_NAMES[w]} !</p>
+      <p class="trophy">Victoire des ${teamName(game, w)} !</p>
       <p style="font-weight:700;font-size:18px">${teamNames(game.teams[w])}</p>
       <p class="final">${res.totals[w]} <span>à ${res.totals[1 - w]}</span></p>
       <button class="btn gold block" data-act="close-win">Voir la partie</button>
@@ -2442,7 +2506,17 @@ async function handle(act, el, id) {
     // ----- parties
     case 'new-game': {
       const r = D().rules;
-      return openSheet('newGame', { slots: [null, null, null, null], target: r.target, allowSA: r.allowSA, allowTA: r.allowTA });
+      // Couleurs proposées : celles de la dernière partie de contrée du groupe
+      const lastGame = [...D().games].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0];
+      return openSheet('newGame', { slots: [null, null, null, null], target: r.target, allowSA: r.allowSA, allowTA: r.allowTA, colors: [...teamKeys(lastGame)] });
+    }
+    case 'team-color': {
+      const ti = Number(el.dataset.t);
+      const cols = [...teamKeys(sh.draft)];
+      if (cols[1 - ti] === el.dataset.v) return;
+      cols[ti] = el.dataset.v;
+      sh.draft.colors = cols;
+      return renderSheet();
     }
     case 'pick': {
       const s = sh.draft.slots;
@@ -2482,11 +2556,11 @@ async function handle(act, el, id) {
     case 'start-game': {
       const dr = sh.draft;
       const rules = { ...D().rules, target: dr.target, allowSA: dr.allowSA, allowTA: dr.allowTA };
-      return startGame([[dr.slots[0], dr.slots[1]], [dr.slots[2], dr.slots[3]]], rules, dr.title || '');
+      return startGame([[dr.slots[0], dr.slots[1]], [dr.slots[2], dr.slots[3]]], rules, dr.title || '', teamKeys(dr));
     }
     case 'rematch': {
       const g = store.get(id);
-      return startGame(g.teams.map((t) => [...t]), { contreAll: D().rules.contreAll, ...g.rules });
+      return startGame(g.teams.map((t) => [...t]), { contreAll: D().rules.contreAll, ...g.rules }, '', teamKeys(g));
     }
     case 'delete-game': {
       if (!(await ask({ title: 'Supprimer cette partie ?', message: 'Toutes ses donnes seront effacées et les statistiques recalculées.', ok: 'Supprimer', danger: true }))) return;
@@ -2830,14 +2904,15 @@ function exportStats() {
 
 function exportHands() {
   const d = D();
-  const header = ['Partie', 'Titre', 'Date', 'Donne', 'Bleus', 'Rouges', 'Preneur', 'Prise partagée', 'Annonce', 'Couleur', 'Contre', 'Surcontre',
-    'Points attaque', 'Capot', 'Belote', 'Résultat', 'Points Bleus', 'Points Rouges', 'Total Bleus', 'Total Rouges'];
+  const header = ['Partie', 'Titre', 'Date', 'Donne', 'Équipe 1', 'Équipe 2', 'Couleur équipe 1', 'Couleur équipe 2', 'Preneur', 'Prise partagée', 'Annonce', 'Couleur', 'Contre', 'Surcontre',
+    'Points attaque', 'Capot', 'Belote', 'Résultat', 'Points équipe 1', 'Points équipe 2', 'Total équipe 1', 'Total équipe 2'];
   const rows = [];
   [...d.evaluated].reverse().forEach((e, gi) => {
     e.rows.forEach((r, i) => {
       const h = r.hand;
       rows.push([gi + 1, gameTitle(e.game), dateTime(e.game.startedAt), i + 1,
         e.game.teams[0].map((x) => P(x).name).join(' & '), e.game.teams[1].map((x) => P(x).name).join(' & '),
+        teamName(e.game, 0), teamName(e.game, 1),
         h.passed ? '' : P(h.taker).name, h.shared ? 'oui' : '', h.passed ? 'passe' : bidLabel(h.bid), h.passed ? '' : SUITS[h.suit]?.label,
         h.coincheBy ? P(h.coincheBy).name : '', h.surcoincheBy ? P(h.surcoincheBy).name : '',
         h.attackPoints, h.capot ? 'oui' : '', h.beloteBy ? P(h.beloteBy).name : '',
@@ -2966,9 +3041,12 @@ store.subscribe((_, dataChanged) => {
 
 store.load();
 if (EMBED && !store.getState().group) store.addGroups(buildDemoGroups(store.uuid));
-// Menu d'ouverture : quand on relance l'app (pas sur un lien direct vers une partie ou un joueur)
-ui.launch = isColdStart() && !!store.getState().group && ['home', 'start'].includes(route().name)
+// Lancement de l'app (pas un simple retour après verrouillage) : logo, puis menu des groupes
+// (sauf si on arrive par un lien direct vers une partie ou un joueur).
+const coldStart = isColdStart();
+ui.launch = coldStart && !!store.getState().group && ['home', 'start'].includes(route().name)
   && !(location.hash || '').startsWith('#join=');
+if (coldStart) showSplash();
 if (!EMBED && location.hash.startsWith('#join=')) handleJoinLink();
 else render();
 store.startPolling();

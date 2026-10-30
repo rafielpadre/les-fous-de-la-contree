@@ -24,7 +24,7 @@ export function buildDemo(uuid, opts = {}) {
   const pids = names.map((name) => add('player', { name, photo: null, personId: o.persons[name] || null, createdAt: now - 60 * 864e5 }));
   const sk = Object.fromEntries(pids.map((id, i) => [id, skill[i]]));
 
-  const rules = { ...DEFAULT_RULES, target: 1000 };
+  const rules = { ...DEFAULT_RULES, target: 1000, contreAll: true };
   let t = now - 45 * 864e5;
   for (let gi = 0; gi < o.nContree; gi++) {
     const four = [...pids].sort(() => rnd() - 0.5).slice(0, 4);
@@ -52,11 +52,15 @@ export function buildDemo(uuid, opts = {}) {
       };
       hands.push(h);
       const res = gameTotals(hands, teams, rules);
+      // La partie « en cours » de la démo ne doit pas se terminer
+      if (running && res.winner !== null) { hands.pop(); break; }
       if (res.winner !== null || (running && hi >= 4)) break;
     }
     const res = gameTotals(hands, teams, rules);
+    // Quelques parties avec d'autres couleurs d'équipe que bleu / rouge
+    const COLS = [['bleu', 'rouge'], ['vert', 'orange'], ['violet', 'jaune'], ['bleu', 'rouge'], ['turquoise', 'rose']];
     add('game', {
-      teams, rules, startedAt: t,
+      teams, rules, startedAt: t, colors: COLS[Math.floor(rnd() * COLS.length)],
       finishedAt: res.winner !== null ? t + hands.length * 4 * 60000 : null,
       winner: res.winner,
     }, gid);

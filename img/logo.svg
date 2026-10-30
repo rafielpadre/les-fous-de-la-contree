@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Les Fous de la Contrée">
+  <!-- Logo des Fous de la Contrée : bonnet de fou au-dessus de deux cartes, sur un tapis vert.
+       Pour mettre votre propre logo, remplacez ce fichier (même nom) ou changez « logo » dans js/config.js. -->
+  <defs>
+    <pattern id="felt" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="28" height="28" fill="#1d5a3c"/>
+      <rect width="3" height="28" fill="#23683f"/><rect width="28" height="3" fill="#23683f"/>
+    </pattern>
+    <path id="heart" d="M0 -18 C-8 -36 -40 -34 -40 -8 C-40 14 -16 28 0 46 C16 28 40 14 40 -8 C40 -34 8 -36 0 -18Z"/>
+    <path id="spade" d="M0 -46 C-14 -26 -42 -10 -42 12 C-42 32 -18 38 -4 24 L-12 46 L12 46 L4 24 C18 38 42 32 42 12 C42 -10 14 -26 0 -46Z"/>
+  </defs>
+  <circle cx="256" cy="256" r="244" fill="url(#felt)"/>
+  <circle cx="256" cy="256" r="236" fill="none" stroke="#f2b53a" stroke-width="14"/>
+  <circle cx="256" cy="256" r="214" fill="none" stroke="#f2b53a" stroke-width="3" opacity=".55"/>
+
+  <!-- Deux cartes en éventail -->
+  <g transform="rotate(-13 256 400)">
+    <rect x="148" y="232" width="128" height="176" rx="16" fill="#fffaf0" stroke="#15201a" stroke-opacity=".12" stroke-width="3"/>
+    <use href="#heart" transform="translate(212 322) scale(.95)" fill="#d7263d"/>
+  </g>
+  <g transform="rotate(13 256 400)">
+    <rect x="236" y="232" width="128" height="176" rx="16" fill="#f2b53a" stroke="#15201a" stroke-opacity=".12" stroke-width="3"/>
+    <use href="#spade" transform="translate(300 320) scale(.9)" fill="#15201a"/>
+  </g>
+
+  <!-- Bonnet de fou : trois pointes et leurs grelots -->
+  <path d="M150 226 C150 172 124 140 100 128 C140 118 178 140 196 176 C206 128 226 96 256 72 C286 96 306 128 316 176 C334 140 372 118 412 128 C388 140 362 172 362 226 Z" fill="#d7263d"/>
+  <path d="M196 176 C206 128 226 96 256 72 C286 96 306 128 316 176 C298 196 214 196 196 176 Z" fill="#f2b53a"/>
+  <path d="M150 226 C150 172 124 140 100 128 C140 118 178 140 196 176 C190 196 170 214 150 226 Z" fill="#b31d31"/>
+  <rect x="140" y="214" width="232" height="34" rx="17" fill="#f2b53a"/>
+  <g fill="#d7263d">
+    <path d="M190 231 l9 -9 l9 9 l-9 9 Z"/><path d="M247 231 l9 -9 l9 9 l-9 9 Z"/><path d="M304 231 l9 -9 l9 9 l-9 9 Z"/>
+  </g>
+  <g fill="#f2b53a" stroke="#15201a" stroke-opacity=".25" stroke-width="3">
+    <circle cx="98" cy="128" r="17"/><circle cx="256" cy="66" r="17"/><circle cx="414" cy="128" r="17"/>
+  </g>
+</svg>
