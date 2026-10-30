@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 19;   // doit correspondre à 'fdc-v19' dans sw.js
-const APP_VERSION = `${APP_BUILD} — thème vert, couleurs d'équipe, logo`;
+const APP_BUILD = 20;   // doit correspondre à 'fdc-v20' dans sw.js
+const APP_VERSION = `${APP_BUILD} — photo en grand, logo plus long`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -312,6 +312,24 @@ function shell(title, body, { back = null, fab = '', active = '', groupSwitch = 
 }
 
 // ============================================================ ACCUEIL (sans groupe)
+// ------------------------------------------------------------ photo de profil en grand
+/** Grand avatar du profil : touchable pour voir la photo en grand (s'il y en a une). */
+function zoomableAvatar(p) {
+  if (!p?.photo) return avatar(p, 'l');
+  return `<button class="av-zoom" data-act="photo-zoom" aria-label="Voir la photo de ${esc(p.name)} en grand">${avatar(p, 'l')}</button>`;
+}
+function showPhoto(src, name) {
+  const el = document.createElement('div');
+  el.className = 'lightbox';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', `Photo de ${name}`);
+  el.innerHTML = `<img src="${esc(src)}" alt=""><p>${esc(name)}</p><span class="small">Touchez pour fermer</span>`;
+  const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); };
+  el.addEventListener('click', close);
+  document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
+  document.body.appendChild(el);
+}
+
 // ------------------------------------------------------------ logo et écran d'ouverture
 // Logo de l'app : fichier img/logo.svg par défaut ; pour en changer, remplacez ce fichier
 // ou indiquez un autre chemin dans js/config.js (logo: 'img/mon-logo.png').
@@ -325,16 +343,18 @@ function showSplash() {
   el.setAttribute('aria-hidden', 'true');
   el.innerHTML = `${logoImg('splash-logo')}<p class="splash-name"><small>Les Fous de</small>la Contrée</p>`;
   document.body.appendChild(el);
+  // Pendant le logo, tout le fond de l'écran prend la couleur du logo (pas de bande claire en bas)
+  document.documentElement.classList.add('splashing');
   const quick = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   let gone = false;
   const close = () => {
     if (gone) return;
     gone = true;
     el.classList.add('out');
-    setTimeout(() => el.remove(), 400);
+    setTimeout(() => { el.remove(); document.documentElement.classList.remove('splashing'); }, 450);
   };
   el.addEventListener('click', close);
-  setTimeout(close, quick ? 500 : 1400);
+  setTimeout(close, quick ? 800 : 2600);
 }
 
 // ------------------------------------------------------------ menu d'ouverture
@@ -698,7 +718,7 @@ function playerPage(id, opts = {}) {
 
   let body = `
     <div class="hero felt">
-      ${avatar(p, 'l')}
+      ${zoomableAvatar(p)}
       <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
         <p>${opts.game ? `${esc(gameTitle(opts.game) || 'Cette partie')} · ${s.handsDealt} donne${s.handsDealt > 1 ? 's' : ''}` : `${s.games} partie${s.games > 1 ? 's' : ''} · ${s.handsPlayed} donnes jouées`}</p>
         ${profileActions(p, opts)}
@@ -2266,7 +2286,7 @@ function tarotPlayerPage(id, opts = {}) {
   const s = d.tstats.get(id);
   let body = `
     <div class="hero felt">
-      ${avatar(p, 'l')}
+      ${zoomableAvatar(p)}
       <div style="min-width:0;flex:1"><h2>${esc(p.name)}</h2>
         <p>${opts.game ? `${esc(gameTitle(opts.game) || 'Cette partie')} · ${s.handsDealt} donne${s.handsDealt > 1 ? 's' : ''}` : `${s.games} partie${s.games > 1 ? 's' : ''} de tarot · ${s.handsPlayed} donnes jouées`}</p>
         ${profileActions(p, opts)}
@@ -2637,6 +2657,11 @@ async function handle(act, el, id) {
       toast('Lien retiré');
       return renderSheet();
     case 'groups': return openSheet('groups', {});
+    case 'photo-zoom': {
+      const img = el.querySelector('img');
+      if (img) showPhoto(img.src, el.closest('.hero')?.querySelector('h2')?.textContent || '');
+      return;
+    }
     case 'launch-open':
       ui.launch = false;
       store.switchGroup(id);

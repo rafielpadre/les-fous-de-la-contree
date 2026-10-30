@@ -1,5 +1,6 @@
-// Photo de profil : recadrage carré + compression (≈ 15-30 ko) pour la synchro.
-export async function fileToAvatar(file, size = 256, quality = 0.82) {
+// Photo de profil : recadrage carré + compression (≈ 40-60 ko) pour la synchro.
+// 480 px pour rester nette quand on l'affiche en grand.
+export async function fileToAvatar(file, size = 480, quality = 0.8) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((resolve, reject) => {
