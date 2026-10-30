@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 21;   // doit correspondre à 'fdc-v21' dans sw.js
-const APP_VERSION = `${APP_BUILD} — logo Tutu tutututu`;
+const APP_BUILD = 22;   // doit correspondre à 'fdc-v22' dans sw.js
+const APP_VERSION = `${APP_BUILD} — design moderne (essai)`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -303,11 +303,11 @@ function shell(title, body, { back = null, fab = '', active = '', groupSwitch = 
     <main>${body}</main>
     ${fab ? `<div class="fab-wrap">${fab}</div>` : ''}
     <nav class="tabs five" aria-label="Navigation">
-      ${tab('#/', '♠', 'Parties', 'home')}
-      ${tab('#/players', '♥', 'Joueurs', 'players')}
-      ${tab('#/charts', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19l6-7 4 4 8-10"/></svg>', 'Graphiques', 'charts')}
-      ${tab('#/history', '♦', 'Historique', 'history')}
-      ${tab('#/settings', '♣', 'Groupe', 'settings')}
+      ${tab('#/', TAB_ICONS.home, 'Parties', 'home')}
+      ${tab('#/players', TAB_ICONS.players, 'Joueurs', 'players')}
+      ${tab('#/charts', TAB_ICONS.charts, 'Graphiques', 'charts')}
+      ${tab('#/history', TAB_ICONS.history, 'Historique', 'history')}
+      ${tab('#/settings', TAB_ICONS.settings, 'Groupe', 'settings')}
     </nav>`;
 }
 
@@ -329,6 +329,27 @@ function showPhoto(src, name) {
   document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
   document.body.appendChild(el);
 }
+
+// ------------------------------------------------------------ icônes et style du bandeau
+const TAB_ICONS = {home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="6.5" width="11" height="14" rx="2.2"/><path d="M8.5 3.5h9.3a2.2 2.2 0 0 1 2.2 2.2v12.8"/><path d="M9 11.2c0-1.3 1.6-1.7 2.2-.6.6-1.1 2.2-.7 2.2.6 0 1.4-2.2 2.6-2.2 2.6s-2.2-1.2-2.2-2.6z"/></svg>`, players: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.4 6.5-5.4s5.7 1.9 6.5 5.4"/><path d="M15.5 5.2a3.4 3.4 0 0 1 0 6.6"/><path d="M18.3 14.9c1.6.8 2.7 2.4 3.2 5.1"/></svg>`, charts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V4"/><path d="M4 20h16"/><path d="M7.5 15l3.5-4 3 3 5.5-6.5"/></svg>`, history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`, settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>`};
+
+/** Styles de bandeau proposés (Groupe → Apparence), mémorisés sur ce téléphone. */
+const HEADER_STYLES = {
+  clair: { label: 'Clair', c: '#faf7f1' },
+  vert: { label: 'Vert', c: '#1d5a3c' },
+  noir: { label: 'Noir', c: '#26221c' },
+  bordeaux: { label: 'Bordeaux', c: '#6b2232' },
+  nuit: { label: 'Bleu nuit', c: '#1e2b45' },
+  sauge: { label: 'Sauge', c: '#6f8f7a' },
+};
+function headerStyle() {
+  try { const k = localStorage.getItem('fdc:header'); return HEADER_STYLES[k] ? k : 'clair'; } catch { return 'clair'; }
+}
+function applyHeaderStyle(k = headerStyle()) {
+  document.documentElement.dataset.header = k;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', HEADER_STYLES[k].c);
+}
+applyHeaderStyle();
 
 // ------------------------------------------------------------ logo et écran d'ouverture
 // Logo de l'app : fichier img/logo.svg par défaut ; pour en changer, remplacez ce fichier
@@ -1373,6 +1394,13 @@ function settingsPage() {
 
   const tg = (k, label, hint = '') => `<label class="toggle"><input type="checkbox" data-rule="${k}" ${r[k] ? 'checked' : ''}>
       <span>${label}${hint ? `<br><span class="small muted">${hint}</span>` : ''}</span></label>`;
+  const hk = headerStyle();
+  body += `<h2>Apparence</h2>
+    <div class="panel">
+      <span class="lab" style="display:block;font-weight:700;margin-bottom:8px">Bandeau du haut</span>
+      <div class="hdr-picks">${Object.entries(HEADER_STYLES).map(([k, h]) => `<button class="hdr-pick" data-act="header-style" data-v="${k}" aria-pressed="${k === hk}"><i style="--c:${h.c}"></i>${h.label}</button>`).join('')}</div>
+      <p class="small muted" style="margin:10px 0 0">Réglage propre à ce téléphone.</p>
+    </div>`;
   body += `<h2>Règles du groupe</h2>
     <div class="panel">
       <div class="field" style="margin-top:0"><label for="rule-target">Score à atteindre par défaut</label>
@@ -2657,6 +2685,11 @@ async function handle(act, el, id) {
       toast('Lien retiré');
       return renderSheet();
     case 'groups': return openSheet('groups', {});
+    case 'header-style': {
+      try { localStorage.setItem('fdc:header', el.dataset.v); } catch { /* stockage indisponible */ }
+      applyHeaderStyle(el.dataset.v);
+      return render();
+    }
     case 'photo-zoom': {
       const img = el.querySelector('img');
       if (img) showPhoto(img.src, el.closest('.hero')?.querySelector('h2')?.textContent || '');
