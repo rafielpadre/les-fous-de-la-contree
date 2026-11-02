@@ -20,7 +20,7 @@ Retour à la [présentation](../README.md) · [Installation](INSTALLATION.md)
 - Les autres téléphones voient les scores se mettre à jour toutes les 4 secondes pendant une partie.
 - **Titre de partie** (facultatif) : à la création d'une partie, ou plus tard avec « Donner un titre / Renommer » en bas de l'écran de la partie. Il s'affiche en haut de la partie, dans les listes, les profils et les exports.
 - **% de prises sur les donnes jouées** : nombre de prises du joueur divisé par le nombre de donnes distribuées pendant qu'il était à la table (donnes « tous passent » comprises). Exemple : 2 prises sur 8 donnes = 25 %. Disponible pour la partie en cours, dans le profil (carrière), dans les graphiques et l'export.
-- **Mise à jour** : si une version plus récente est en ligne, un bandeau « Mettre à jour » apparaît. Le bouton **Groupe → Forcer la mise à jour de l'app** vide la mémoire de l'app et recharge la dernière version (les parties et joueurs ne sont pas touchés).
+- **Mise à jour** : si une version plus récente est en ligne, un bandeau « Mettre à jour » apparaît. Le bouton **Réglages → App → Forcer la mise à jour de l'app** vide la mémoire de l'app et recharge la dernière version (les parties et joueurs ne sont pas touchés).
 - **Pendant une partie** (contrée et tarot), un graphique sous les cartes des joueurs suit une statistique au choix, une courbe par joueur, recalculée après chaque donne : % de prises réussies, prises réussies, points moyens par contrat réussi (contrée) ou gain moyen par prise (tarot), contres, belotes, petits au bout, score… Le bouton « Cette partie | Carrière » choisit entre les statistiques de la partie seule et celles de toute la carrière.
 - **Graphiques en direct** : dans l'onglet Graphes et dans les profils, la partie en cours apparaît comme dernier point, en pointillés (provisoire). Les prises, contres, belotes, etc. y sont comptés tout de suite ; les victoires, places et podiums ne comptent qu'à la fin de la partie.
 - **Onglet Graphes** : choisissez une statistique dans la liste et touchez les joueurs à comparer (8 au maximum). Une courbe par joueur montre la valeur cumulée après chaque partie du groupe. Touchez la courbe pour lire les valeurs de tous les joueurs à cette partie. Le tableau « Aujourd'hui » donne les valeurs actuelles.
@@ -56,11 +56,10 @@ Notations utilisées :
 
 **Exemple 3.** Annonce de 100 contrée qui chute, sans belote : la défense marque 2 × (160 + 100) = 520, l'attaque 0. Sans contre : 160 + 100 = 260.
 
-L'ancienne règle (seule l'annonce est multipliée et chacun garde ses points : exemple 2 → 2×100 + 100 + 20 = 320 pour l'attaque, 60 pour la défense) reste disponible en décochant « Contré : le gagnant prend tout ». Les parties lancées avant la version 15 gardent l'ancienne règle. En bas de l'écran d'une partie, le cadre **Donnes contrées** indique la règle utilisée par cette partie ; **Passer à la règle officielle** (ou l'inverse) recalcule toutes ses donnes. Le même bouton apparaît aussi dans la saisie d'une donne contrée quand la partie utilise l'ancienne règle.
+C'est la seule façon de compter les donnes contrées : l'ancienne règle (seule l'annonce multipliée) a été retirée en version 25, et toutes les parties, y compris les anciennes, sont comptées avec la règle officielle.
 
-Plusieurs règles sont réglables dans **Groupe → Règles du groupe** :
+Plusieurs règles sont réglables dans **Réglages → Règles** :
 
-- le décompte des donnes contrées (règle officielle ou ancienne règle) ;
 - l'arrondi ;
 - ce que marque la défense en cas de chute (160, 162, ou l'annonce seule) ;
 - le capot non annoncé à 250 ;
@@ -86,7 +85,7 @@ Chaque partie garde les règles en vigueur au moment de son lancement.
 | Meilleur partenaire / adversaire redouté | Meilleur et pire taux de victoire, à partir de 2 parties ensemble |
 | Évolution | % de victoires et % de prises réussies cumulés après chaque partie |
 
-Exports CSV (ouvrables dans Excel) : **Groupe → Exporter**.
+Exports CSV (ouvrables dans Excel) : **Réglages → App → Exporter**.
 
 ### Stats d'un joueur pour une partie
 
@@ -100,7 +99,7 @@ Dans l'écran d'une partie (contrée ou tarot), **touchez la carte d'un joueur**
 
 ## Plusieurs groupes et « Toutes ses stats »
 
-Un même téléphone peut suivre **plusieurs groupes**, par exemple un groupe avec certains amis et un autre avec d'autres. Pour passer de l'un à l'autre, touchez le nom du groupe en haut de l'onglet Parties. Le menu qui s'ouvre permet aussi d'**en rejoindre un autre** (avec son code) ou d'en **créer un nouveau**. On le retrouve dans **Groupe → Mes groupes**.
+Un même téléphone peut suivre **plusieurs groupes**, par exemple un groupe avec certains amis et un autre avec d'autres. Pour passer de l'un à l'autre, touchez le nom du groupe en haut de l'onglet Parties. Le menu qui s'ouvre permet aussi d'**en rejoindre un autre** (avec son code) ou d'en **créer un nouveau**. On le retrouve dans **Réglages → Groupe → Mes groupes**.
 
 Chaque groupe garde ses propres profils, parties, classements et graphiques. Rien ne change pour jouer : un profil reste une simple fiche que n'importe qui peut créer en quelques secondes.
 
@@ -152,7 +151,7 @@ La somme *D* de ces éléments est retirée à chaque défenseur. Le preneur gag
 - petits au bout, poignées, chelems et misères ;
 - courbes d'évolution.
 
-Les règles par défaut du tarot se règlent dans **Groupe → Règles du tarot**.
+Les règles par défaut du tarot se règlent dans **Réglages → Règles**.
 
 ---
 
@@ -171,9 +170,11 @@ Le logo s'affiche à l'ouverture de l'app (écran d'accueil animé, puis en haut
 
 Les icônes de l'écran d'accueil du téléphone sont dans `icons/` (192, 512 et 180 pixels pour l'iPhone).
 
-### Couleurs au choix (Groupe → Apparence)
+### Thèmes (Réglages → Thèmes)
 
-Chacun choisit sur son téléphone la couleur de cinq éléments, parmi 8 couleurs proposées ou n'importe quelle autre (pastille « + ») :
+Un **thème** change toutes les couleurs d'un coup, avec des couleurs choisies pour aller ensemble : **Classique** (crème et vert, celui d'origine), **Tapis vert** (vert sombre et or), **Clair** (blanc et bleu), **Coloré** (violet et corail), **Pastel**, **Océan**, **Bordeaux**, **Nuit** et **Noir et or**. Chaque vignette montre un aperçu : bandeau, fond, cartes, bouton et barre du menu. Le choix est propre à chaque téléphone.
+
+**Réglage perso** : à partir du thème en cours, on peut changer une couleur précise, parmi 16 couleurs proposées ou n'importe quelle autre (pastille « + », qui ouvre le sélecteur de couleur du téléphone) :
 
 | Élément | Ce qui change |
 |---|---|
@@ -183,7 +184,7 @@ Chacun choisit sur son téléphone la couleur de cinq éléments, parmi 8 couleu
 | Boutons et sélection | les boutons principaux, le sélecteur Contrée / Tarot, l'onglet actif, les choix cochés |
 | Barre du menu | la barre d'onglets en bas |
 
-Le texte s'adapte tout seul : **blanc sur une couleur foncée, noir sur une couleur claire**. L'app calcule la luminance $L$ de la couleur de fond (de 0 pour le noir à 1 pour le blanc, norme WCAG) et garde celui des deux textes qui contraste le plus, avec le rapport de contraste $(L_{\max} + 0{,}05)/(L_{\min} + 0{,}05)$. Les couleurs de liens et de chiffres (vert, rouge, couleur des boutons) sont éclaircies ou foncées si besoin pour rester lisibles. « Revenir aux couleurs d'origine » remet tout comme au départ.
+Le texte s'adapte tout seul : **blanc sur une couleur foncée, noir sur une couleur claire**. L'app calcule la luminance $L$ de la couleur de fond (de 0 pour le noir à 1 pour le blanc, norme WCAG) et garde celui des deux textes qui contraste le plus, avec le rapport de contraste $(L_{\max} + 0{,}05)/(L_{\min} + 0{,}05)$. Les couleurs de liens, de chiffres et les noms d'équipe sont éclaircis ou foncés si besoin pour rester lisibles. Pour revenir à l'origine, choisissez le thème Classique.
 
 Le logo d'ouverture, le menu des groupes et la roue du tirage restent toujours sur fond vert.
 
@@ -205,4 +206,4 @@ Tout l'aspect visuel est dans **`css/app.css`**. Les réglages du design actuel 
 | `--r-lg`, `--r-md` | arrondi des cartes et boutons | `18px`, `12px` |
 | `--display`, `--body` | polices des titres et du texte (début du fichier) | Anybody, Atkinson Hyperlegible |
 
-Les couleurs proposées dans Groupe → Apparence sont dans `THEME_PARTS` (début de `js/app.js`). Après une modification, augmentez `VERSION` dans `sw.js` (et `APP_BUILD` dans `js/app.js`) pour que les téléphones prennent la nouvelle version. Les couleurs des courbes sont dans `SERIES_COLORS` (début de `js/app.js`).
+Les thèmes sont dans `THEMES` et les couleurs du réglage perso dans `THEME_PARTS` (début de `js/app.js`). Après une modification, augmentez `VERSION` dans `sw.js` (et `APP_BUILD` dans `js/app.js`) pour que les téléphones prennent la nouvelle version. Les couleurs des courbes sont dans `SERIES_COLORS` (début de `js/app.js`).

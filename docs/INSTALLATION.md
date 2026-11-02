@@ -78,7 +78,7 @@ L'icône « Fous Contrée » apparaît alors comme une application normale.
 ## Étape 5 — Créer le groupe et inviter les joueurs
 
 1. Sur votre téléphone : **Créer un groupe** avec un nom. Un code de 8 caractères est créé.
-2. Onglet **Groupe → Inviter** : envoyez le lien par SMS ou WhatsApp. Le lien ouvre l'app avec le code déjà rempli. Le code peut aussi se saisir à la main via **Rejoindre un groupe**.
+2. Onglet **Réglages → Groupe → Inviter** : envoyez le lien par SMS ou WhatsApp. Le lien ouvre l'app avec le code déjà rempli. Le code peut aussi se saisir à la main via **Rejoindre un groupe**.
 3. Créez les profils des joueurs (onglet **Joueurs**), avec une photo si vous voulez.
 
 
@@ -102,7 +102,7 @@ Pour éviter la pause, le fichier `.github/workflows/keepalive.yml` envoie une r
 | Badge « Erreur » rouge en haut | Touchez-le pour réessayer. Vérifiez l'URL et la clé dans `config.js`. |
 | « Serveur non configuré » | Le script `schema.sql` n'a pas été exécuté entièrement. |
 | « Code de groupe inconnu » | Code mal recopié : il n'y a ni 0, ni O, ni 1, ni I dans les codes. |
-| L'app n'a pas pris une modification | Vérifiez le numéro en bas de l'onglet Groupe, puis touchez « Forcer la mise à jour de l'app ». |
+| L'app n'a pas pris une modification | Vérifiez le numéro dans Réglages → App, puis touchez « Forcer la mise à jour de l'app ». |
 | Serveur injoignable depuis plusieurs jours | Projet Supabase en pause : cliquez **Restore** sur sa page. |
 
 ## Mode local

@@ -209,8 +209,8 @@ p { margin: 0 0 10px; }
 .hand .what b { font-weight: 700; }
 .hand .what .sub { font-size: 13px; color: var(--muted); }
 .hand .pts { text-align: right; font: 800 16px/1.2 var(--display); font-variant-numeric: tabular-nums; }
-.hand .pts .p0 { color: var(--team0); }
-.hand .pts .p1 { color: var(--team1); }
+.hand .pts .p0 { color: var(--team0-t, var(--team0)); }
+.hand .pts .p1 { color: var(--team1-t, var(--team1)); }
 .tag {
   display: inline-block; font-size: 12px; font-weight: 700; border-radius: 6px;
   padding: 1px 6px; margin-left: 4px; vertical-align: 1px;
@@ -385,8 +385,8 @@ p { margin: 0 0 10px; }
 .slot-team.t0 { background: var(--team0-soft); }
 .slot-team.t1 { background: var(--team1-soft); }
 .slot-team h3 { font-size: 14px; margin-bottom: 6px; }
-.slot-team.t0 h3 { color: var(--team0); }
-.slot-team.t1 h3 { color: var(--team1); }
+.slot-team.t0 h3 { color: var(--team0-tp, var(--team0)); }
+.slot-team.t1 h3 { color: var(--team1-tp, var(--team1)); }
 .slot {
   display: flex; align-items: center; gap: 8px; width: 100%;
   border: 2px dashed var(--line); border-radius: var(--r-sm); background: var(--card);
@@ -647,8 +647,8 @@ p { margin: 0 0 10px; }
 /* ---------- Choix des couleurs d'équipe ---------- */
 .swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .swatches .sw-lab { font-size: 13px; font-weight: 700; width: 100%; }
-.swatches.t0 .sw-lab { color: var(--team0); }
-.swatches.t1 .sw-lab { color: var(--team1); }
+.swatches.t0 .sw-lab { color: var(--team0-tp, var(--team0)); }
+.swatches.t1 .sw-lab { color: var(--team1-tp, var(--team1)); }
 .sw {
   width: 34px; height: 34px; border-radius: 50%; border: 0; padding: 0;
   background: var(--c); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35);
@@ -879,3 +879,32 @@ main { padding-bottom: calc(170px + var(--safe-b)); }
 .sw-free[aria-pressed="true"] { background: var(--c) !important; }
 .sw-free span { width: 22px; height: 22px; border-radius: 50%; background: #fff; color: #26221c; display: grid; place-items: center; font-weight: 800; font-size: 16px; line-height: 1; }
 .sw-free input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; padding: 0; cursor: pointer; }
+
+/* ---------- Réglages : onglets et thèmes ---------- */
+.stabs { grid-template-columns: repeat(4, 1fr); margin-bottom: 6px; }
+.stabs a { font-size: 14px; padding: 8px 4px; min-height: 40px; min-width: 0; }
+.theme-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 360px) { .theme-grid { grid-template-columns: repeat(2, 1fr); } }
+.theme-card {
+  --ink: var(--c-ink); --muted: var(--c-muted); --line: var(--c-line);
+  display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 10px; text-align: left;
+  border: 2px solid var(--line); border-radius: var(--r-md); background: var(--card); color: var(--ink); min-width: 0;
+}
+.theme-card[aria-pressed="true"] { border-color: var(--c-brand-2); box-shadow: 0 0 0 2px var(--c-brand-2); }
+.tc-name { font-weight: 800; font-size: 14px; padding: 0 4px; line-height: 1.15; }
+.tc-desc { font-size: 12px; color: var(--muted); padding: 0 4px; margin-top: -4px; line-height: 1.2; }
+.tp { position: relative; display: flex; flex-direction: column; gap: 4px; height: 104px; border-radius: 9px; overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); padding: 0 6px 6px; }
+.tp i { display: flex; align-items: center; gap: 4px; flex: none; }
+.tp b { display: block; height: 4px; width: 46%; border-radius: 2px; opacity: .85; }
+.tp-h { height: 18px; margin: 0 -6px 2px; padding: 0 7px; }
+.tp-c { height: 18px; border-radius: 5px; padding: 0 6px; flex-direction: column; align-items: flex-start !important; justify-content: center; gap: 3px !important; }
+.tp-c b { height: 3px; }
+.tp-btn { height: 14px; border-radius: 999px; justify-content: center; margin: 0 8px; }
+.tp-btn b { width: 40%; height: 3px; }
+.tp-t { position: absolute; left: 6px; right: 6px; bottom: 5px; height: 14px; border-radius: 7px; justify-content: space-around; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.tp-t b { width: 14%; height: 4px; }
+.th-panel summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 10px; }
+.th-panel summary::-webkit-details-marker { display: none; }
+.th-panel summary::after { content: '+'; font-size: 22px; line-height: 1; color: var(--brand); }
+.th-panel[open] summary::after { content: '–'; }

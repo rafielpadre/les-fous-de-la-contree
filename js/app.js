@@ -16,9 +16,9 @@ import {
 } from './tarot.js';
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
-// Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 24;   // doit correspondre à 'fdc-v24' dans sw.js
-const APP_VERSION = `${APP_BUILD} — couleurs au choix`;
+// Numéro de version affiché dans Réglages → App (pour vérifier une mise à jour)
+const APP_BUILD = 25;   // doit correspondre à 'fdc-v25' dans sw.js
+const APP_VERSION = `${APP_BUILD} — réglages et thèmes`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -51,9 +51,12 @@ function teamKeys(g) {
 const teamCol = (g, ti) => TEAM_PALETTE[teamKeys(g)[ti]];
 const teamName = (g, ti) => teamCol(g, ti).name;
 /** Variables CSS --team0… / --team1… à poser sur un élément pour colorer la partie. */
+// --team0-t / --team0-tp : la même couleur, éclaircie ou foncée si besoin pour rester lisible
+// en texte sur les cartes (t) ou sur le fond de l'app (tp), selon le thème choisi.
 const teamVars = (g) => [0, 1].map((ti) => {
   const c = teamCol(g, ti);
-  return `--team${ti}:${c.c};--team${ti}-2:${c.c2};--team${ti}-soft:${c.soft}`;
+  const th = themeNow || { card: '#ffffff', paper: '#f6f2ea' };
+  return `--team${ti}:${c.c};--team${ti}-2:${c.c2};--team${ti}-soft:${c.soft};--team${ti}-t:${readable(c.c, th.card, 3.2)};--team${ti}-tp:${readable(c.c, th.paper, 3.2)}`;
 }).join(';');
 const TEAM_PIPS = ['♠', '♥'];
 const AV_COLORS = ['#3a50c2', '#d7263d', '#12936a', '#b07800', '#7b3fc4', '#e0661b', '#0f8fa8', '#c2337a'];
@@ -268,7 +271,7 @@ function render() {
     case 'gplayer': page = gamePlayerPage(r.id, r.id2); break;
     case 'history': page = historyPage(); break;
     case 'charts': page = chartsPage(); break;
-    case 'settings': page = settingsPage(); break;
+    case 'settings': page = settingsPage(r.id); break;
     default: page = ui.kind === 'tarot' ? tarotHomePage() : homePage();
   }
   app.innerHTML = page;
@@ -310,7 +313,7 @@ function shell(title, body, { back = null, fab = '', active = '', groupSwitch = 
       ${tab('#/players', TAB_ICONS.players, 'Joueurs', 'players')}
       ${tab('#/charts', TAB_ICONS.charts, 'Graphes', 'charts')}
       ${tab('#/history', TAB_ICONS.history, 'Historique', 'history')}
-      ${tab('#/settings', TAB_ICONS.settings, 'Groupe', 'settings')}
+      ${tab('#/settings', TAB_ICONS.settings, 'Réglages', 'settings')}
     </nav>`;
 }
 
@@ -336,16 +339,33 @@ function showPhoto(src, name) {
 // ------------------------------------------------------------ icônes et style du bandeau
 const TAB_ICONS = {home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="6.5" width="11" height="14" rx="2.2"/><path d="M8.5 3.5h9.3a2.2 2.2 0 0 1 2.2 2.2v12.8"/><path d="M9 11.2c0-1.3 1.6-1.7 2.2-.6.6-1.1 2.2-.7 2.2.6 0 1.4-2.2 2.6-2.2 2.6s-2.2-1.2-2.2-2.6z"/></svg>`, players: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.4 6.5-5.4s5.7 1.9 6.5 5.4"/><path d="M15.5 5.2a3.4 3.4 0 0 1 0 6.6"/><path d="M18.3 14.9c1.6.8 2.7 2.4 3.2 5.1"/></svg>`, charts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V4"/><path d="M4 20h16"/><path d="M7.5 15l3.5-4 3 3 5.5-6.5"/></svg>`, history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`, settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>`};
 
-// ------------------------------------------------------------ couleurs de l'app (Groupe → Apparence)
+// ------------------------------------------------------------ couleurs de l'app (Réglages → Thèmes)
 // Chaque élément a une couleur au choix, mémorisée sur ce téléphone (localStorage 'fdc:theme').
 // Le texte posé dessus passe automatiquement en blanc (fond foncé) ou en noir (fond clair).
 const THEME_PARTS = {
-  header: { label: 'Bandeau du haut', def: '#faf7f1', presets: [['Clair', '#faf7f1'], ['Vert', '#1d5a3c'], ['Noir', '#26221c'], ['Bordeaux', '#6b2232'], ['Bleu nuit', '#1e2b45'], ['Sauge', '#6f8f7a'], ['Bleu', '#2f55d4'], ['Terracotta', '#b5532f']] },
-  paper: { label: "Fond de l'app", def: '#f6f2ea', presets: [['Crème', '#f6f2ea'], ['Blanc', '#ffffff'], ['Gris perle', '#eceef1'], ['Vert pâle', '#e5efe7'], ['Sable', '#eee2cc'], ['Vert tapis', '#1d5a3c'], ['Bleu nuit', '#18223a'], ['Anthracite', '#1d1d21']] },
-  card: { label: 'Cartes (parties, classement, stats…)', def: '#ffffff', presets: [['Blanc', '#ffffff'], ['Crème', '#fcf8f0'], ['Vert pâle', '#e9f4ec'], ['Bleu pâle', '#e7edfb'], ['Rose pâle', '#fbe8ee'], ['Vert foncé', '#24503a'], ['Bleu nuit', '#26314d'], ['Anthracite', '#2c2c31']] },
-  accent: { label: 'Boutons et sélection', def: '#1f7a4c', presets: [['Vert', '#1f7a4c'], ['Bleu', '#2f55d4'], ['Bordeaux', '#8a2537'], ['Violet', '#6b3fc4'], ['Orange', '#d0661b'], ['Turquoise', '#0b8797'], ['Noir', '#26221c'], ['Or', '#e3ad2f']] },
-  tabs: { label: 'Barre du menu', def: '#ffffff', presets: [['Blanc', '#ffffff'], ['Crème', '#faf5ea'], ['Vert', '#1d5a3c'], ['Noir', '#26221c'], ['Bleu nuit', '#1e2b45'], ['Bordeaux', '#6b2232'], ['Sauge', '#6f8f7a'], ['Gris', '#e9eaed']] },
+  header: { label: 'Bandeau du haut', def: '#faf7f1', presets: [['Clair', '#faf7f1'], ['Vert', '#1d5a3c'], ['Noir', '#26221c'], ['Bordeaux', '#6b2232'], ['Bleu nuit', '#1e2b45'], ['Sauge', '#6f8f7a'], ['Bleu', '#2f55d4'], ['Terracotta', '#b5532f'], ['Violet', '#6a3fd0'], ['Lagon', '#0a6672'], ['Rose poudré', '#f6d6e1'], ['Blanc', '#ffffff'], ['Vert sombre', '#153c29'], ['Prune', '#4a2545'], ['Ardoise', '#3d4a5c'], ['Moutarde', '#c99a2e']] },
+  paper: { label: "Fond de l'app", def: '#f6f2ea', presets: [['Crème', '#f6f2ea'], ['Blanc', '#ffffff'], ['Gris perle', '#eceef1'], ['Vert pâle', '#e5efe7'], ['Sable', '#eee2cc'], ['Vert tapis', '#1d5a3c'], ['Bleu nuit', '#18223a'], ['Anthracite', '#1d1d21'], ['Pêche', '#fff3e3'], ['Rose pâle', '#fbf2f5'], ['Bleu pâle', '#e8f3f4'], ['Ivoire', '#f4ebe6'], ['Vert sombre', '#1b4a33'], ['Noir', '#1a1a1a'], ['Lavande', '#efecf8'], ['Ardoise', '#2b3340']] },
+  card: { label: 'Cartes (parties, classement, stats…)', def: '#ffffff', presets: [['Blanc', '#ffffff'], ['Crème', '#fcf8f0'], ['Vert pâle', '#e9f4ec'], ['Bleu pâle', '#e7edfb'], ['Rose pâle', '#fbe8ee'], ['Vert foncé', '#24503a'], ['Bleu nuit', '#26314d'], ['Anthracite', '#2c2c31'], ['Ivoire', '#fffaf7'], ['Pêche', '#fff6ec'], ['Lavande', '#f1eefb'], ['Menthe', '#e6f6f1'], ['Vert moyen', '#235a40'], ['Noir', '#262626'], ['Prune', '#3a2238'], ['Ardoise', '#36404f']] },
+  accent: { label: 'Boutons et sélection', def: '#1f7a4c', presets: [['Vert', '#1f7a4c'], ['Bleu', '#2f55d4'], ['Bordeaux', '#8a2537'], ['Violet', '#6b3fc4'], ['Orange', '#d0661b'], ['Turquoise', '#0b8797'], ['Noir', '#26221c'], ['Or', '#e3ad2f'], ['Corail', '#db3a22'], ['Rose', '#c2337a'], ['Bleu clair', '#5b8cff'], ['Ambre', '#f0c552'], ['Émeraude', '#12936a'], ['Prune', '#7a2e6e'], ['Ardoise', '#3d4a5c'], ['Rouge', '#d7263d']] },
+  tabs: { label: 'Barre du menu', def: '#ffffff', presets: [['Blanc', '#ffffff'], ['Crème', '#faf5ea'], ['Vert', '#1d5a3c'], ['Noir', '#26221c'], ['Bleu nuit', '#1e2b45'], ['Bordeaux', '#6b2232'], ['Sauge', '#6f8f7a'], ['Gris', '#e9eaed'], ['Violet foncé', '#2c1b63'], ['Vert sombre', '#153c29'], ['Ivoire', '#fffaf7'], ['Noir profond', '#121212'], ['Rose pâle', '#fbf2f5'], ['Lagon', '#0a6672'], ['Ardoise', '#3d4a5c'], ['Lavande', '#efecf8']] },
 };
+/** Thèmes complets : les cinq couleurs choisies pour aller ensemble. */
+const THEMES = {
+  classique: { name: 'Classique', desc: 'Crème et vert', header: '#faf7f1', paper: '#f6f2ea', card: '#ffffff', accent: '#1f7a4c', tabs: '#ffffff' },
+  tapis: { name: 'Tapis vert', desc: 'Vert sombre et or', header: '#153c29', paper: '#1b4a33', card: '#235a40', accent: '#f0c552', tabs: '#153c29' },
+  clair: { name: 'Clair', desc: 'Blanc et bleu', header: '#ffffff', paper: '#f2f4f7', card: '#ffffff', accent: '#3159d6', tabs: '#ffffff' },
+  colore: { name: 'Coloré', desc: 'Violet et corail', header: '#6a3fd0', paper: '#fff3e3', card: '#ffffff', accent: '#db3a22', tabs: '#2c1b63' },
+  pastel: { name: 'Pastel', desc: 'Rose poudré', header: '#f6d6e1', paper: '#fbf2f5', card: '#ffffff', accent: '#c2337a', tabs: '#ffffff' },
+  ocean: { name: 'Océan', desc: 'Bleu lagon', header: '#0a6672', paper: '#e8f3f4', card: '#ffffff', accent: '#0b8797', tabs: '#ffffff' },
+  bordeaux: { name: 'Bordeaux', desc: 'Vin et ivoire', header: '#5c1a2a', paper: '#f4ebe6', card: '#fffaf7', accent: '#8a2537', tabs: '#fffaf7' },
+  nuit: { name: 'Nuit', desc: 'Bleu nuit', header: '#121a2b', paper: '#0e1422', card: '#1a2336', accent: '#5b8cff', tabs: '#121a2b' },
+  noirOr: { name: 'Noir et or', desc: 'Noir profond', header: '#121212', paper: '#1a1a1a', card: '#262626', accent: '#d4af37', tabs: '#121212' },
+};
+const THEME_KEYS = ['header', 'paper', 'card', 'accent', 'tabs'];
+/** Thème actif : le nom d'un thème complet, ou null si les couleurs ont été réglées à la main. */
+function activeThemeKey(t = loadTheme()) {
+  return Object.keys(THEMES).find((k) => THEME_KEYS.every((p) => THEMES[k][p] === t[p])) || null;
+}
 const OLD_HEADERS = { clair: '#faf7f1', vert: '#1d5a3c', noir: '#26221c', bordeaux: '#6b2232', nuit: '#1e2b45', sauge: '#6f8f7a' };
 const isHex = (c) => /^#[0-9a-f]{6}$/i.test(c || '');
 function loadTheme() {
@@ -396,7 +416,10 @@ const THEME_VARS = ['ink', 'ink-2', 'muted', 'line', 'red', 'green', 'brand', 'b
 const BRAND_GREEN = '#1d5a3c';   // ouverture et menu des groupes : toujours sur fond vert
 function setMetaTheme(c) { document.querySelector('meta[name="theme-color"]')?.setAttribute('content', c); }
 const isDefaultTheme = (t) => Object.entries(THEME_PARTS).every(([k, p]) => t[k] === p.def);
+let themeLive = null, themeLiveRaf = 0;   // aperçu de la couleur libre pendant le glissement
+let themeNow = null;   // couleurs du thème en cours (pour les couleurs d'équipe lisibles)
 function applyTheme(t = loadTheme()) {
+  themeNow = t;
   const st = document.documentElement.style;
   const names = ['paper', 'card', 'tabs-bg', 'hdr-bg', 'hdr-solid', 'hdr-ink', 'hdr-sub', 'hdr-chip', 'hdr-line',
     ...['p', 'c', 't'].flatMap((pre) => THEME_VARS.map((v) => `${pre}-${v}`))];
@@ -424,9 +447,22 @@ function applyTheme(t = loadTheme()) {
 const headerColor = () => loadTheme().header;
 applyTheme();
 
-/** Groupe → Apparence : une ligne de pastilles par élément, plus une couleur libre. */
+/** Mini-aperçu d'un thème : bandeau, fond, cartes, bouton et barre du menu. */
+function themePreview(t) {
+  return `<span class="tp" style="background:${t.paper}" aria-hidden="true">
+    <i class="tp-h" style="background:${t.header}"><b style="background:${inkOn(t.header)}"></b></i>
+    <i class="tp-c" style="background:${t.card}"><b style="background:${inkOn(t.card)}"></b><b style="background:${surfaceVars(t.card, t.accent).brand};width:30%"></b></i>
+    <i class="tp-c" style="background:${t.card}"><b style="background:${inkOn(t.card)}"></b></i>
+    <i class="tp-btn" style="background:${t.accent}"><b style="background:${inkOn(t.accent)}"></b></i>
+    <i class="tp-t" style="background:${t.tabs}"><b style="background:${surfaceVars(t.tabs, t.accent).brand}"></b><b style="background:${inkOn(t.tabs)}"></b><b style="background:${inkOn(t.tabs)}"></b></i>
+  </span>`;
+}
+/** Réglages → Thèmes : thèmes complets, puis réglage perso élément par élément. */
 function appearanceBlock() {
   const t = loadTheme();
+  const cur = activeThemeKey(t);
+  const cards = Object.entries(THEMES).map(([k, th]) => `<button class="theme-card" data-act="theme-pick" data-v="${k}" aria-pressed="${cur === k}">
+      ${themePreview(th)}<span class="tc-name">${th.name}</span><span class="tc-desc">${th.desc}</span></button>`).join('');
   const rows = Object.entries(THEME_PARTS).map(([k, part]) => {
     const isPreset = part.presets.some(([, c]) => c === t[k]);
     return `<div class="th-row"><div class="th-head"><span class="lab">${part.label}</span>
@@ -437,12 +473,15 @@ function appearanceBlock() {
           <input type="color" data-theme-free="${k}" value="${t[k]}" aria-label="Autre couleur : ${esc(part.label)}"><span aria-hidden="true">+</span></label>
       </div></div>`;
   }).join('');
-  return `<h2>Apparence</h2>
-    <div class="panel th-panel">
-      ${rows}
-      <p class="small muted" style="margin:12px 0 0">Le texte passe tout seul en blanc sur une couleur foncée et en noir sur une couleur claire. Réglage propre à ce téléphone.</p>
-      <button class="btn light block" style="margin-top:12px" data-act="theme-reset" ${isDefaultTheme(t) ? 'disabled' : ''}>Revenir aux couleurs d'origine</button>
-    </div>`;
+  return `<h2>Thèmes</h2>
+    <p class="small muted" style="margin:-4px 0 10px">Un thème change toutes les couleurs d'un coup. Réglage propre à ce téléphone.</p>
+    <div class="theme-grid">${cards}</div>
+    <h2>Réglage perso</h2>
+    <details class="panel th-panel" ${cur ? '' : 'open'}>
+      <summary><b>${cur ? `Partir du thème « ${THEMES[cur].name} » et changer une couleur` : 'Couleurs personnalisées'}</b></summary>
+      <div style="margin-top:12px">${rows}</div>
+      <p class="small muted" style="margin:12px 0 0">Le texte passe tout seul en blanc sur une couleur foncée et en noir sur une couleur claire.</p>
+    </details>`;
 }
 function setThemePart(k, c) {
   const t = loadTheme();
@@ -670,12 +709,12 @@ function gameCard(e) {
       <div class="row">
         <div class="av-pair">${g.teams[0].map((id) => avatar(P(id), 's')).join('')}</div>
         <div style="flex:1;min-width:0">
-          <div class="small" style="font-weight:700;color:var(--team0)">${teamNames(g.teams[0])}</div>
-          <div class="small" style="font-weight:700;color:var(--team1)">${teamNames(g.teams[1])}</div>
+          <div class="small" style="font-weight:700;color:var(--team0-t)">${teamNames(g.teams[0])}</div>
+          <div class="small" style="font-weight:700;color:var(--team1-t)">${teamNames(g.teams[1])}</div>
         </div>
         <div style="text-align:right;font:900 22px/1.05 var(--display);font-variant-numeric:tabular-nums">
-          <div style="color:var(--team0);${lead === 1 ? 'opacity:.55' : ''}">${e.totals[0]}</div>
-          <div style="color:var(--team1);${lead === 0 ? 'opacity:.55' : ''}">${e.totals[1]}</div>
+          <div style="color:var(--team0-t);${lead === 1 ? 'opacity:.55' : ''}">${e.totals[0]}</div>
+          <div style="color:var(--team1-t);${lead === 0 ? 'opacity:.55' : ''}">${e.totals[1]}</div>
         </div>
       </div>
       <div class="small muted" style="margin-top:8px">${status}</div>
@@ -710,7 +749,7 @@ function gamePage(id) {
 
   if (e.winner !== null) {
     body += `<div class="panel" style="margin-top:14px;text-align:center">
-      <h3 style="color:var(--team${e.winner})">Victoire des ${teamName(g, e.winner)} : ${teamNames(g.teams[e.winner])}</h3>
+      <h3 style="color:var(--team${e.winner}-t)">Victoire des ${teamName(g, e.winner)} : ${teamNames(g.teams[e.winner])}</h3>
       <button class="btn gold block" data-act="rematch" data-id="${g.id}">Revanche avec les mêmes équipes</button>
     </div>`;
   }
@@ -750,12 +789,6 @@ function gamePage(id) {
     body += [...e.rows].reverse().map((row, k) => handRow(row, e.rows.length - k, g.teams)).join('');
     body += '</ul>';
   }
-
-  // Règle des donnes contrées utilisée par CETTE partie (modifiable : toutes ses donnes sont recalculées)
-  body += `<div class="panel contre-rule" style="margin-top:16px">
-      <div><b>Donnes contrées :</b> ${g.rules.contreAll ? 'règle officielle (le gagnant prend tout)' : 'ancienne règle (seule l\'annonce est doublée)'}</div>
-      <button class="link" data-act="toggle-contre" data-id="${g.id}">${g.rules.contreAll ? 'Revenir à l\'ancienne règle' : 'Passer à la règle officielle'}</button>
-    </div>`;
 
   body += `<div style="margin-top:22px" class="row wrap">
       <span class="small muted" style="flex:1">Commencée le ${dateTime(g.startedAt)}</span>
@@ -1469,114 +1502,125 @@ function historyPage() {
 }
 
 // ============================================================ GROUPE / RÉGLAGES
-function settingsPage() {
+const SETTINGS_TABS = [['groupe', 'Groupe'], ['regles', 'Règles'], ['themes', 'Thèmes'], ['app', 'App']];
+/** Page Réglages, en onglets : Groupe, Règles, Thèmes, App. */
+function settingsPage(tabKey) {
+  const tabNow = SETTINGS_TABS.some(([k]) => k === tabKey) ? tabKey : 'groupe';
   const st = store.getState();
   const g = st.group;
   const d = D();
   const r = d.rules;
   const local = g.local || !store.cloudConfigured;
-  let body = `<div class="gname-row"><h2>${esc(g.name)}</h2>
-    <button class="link" data-act="rename-group" data-id="${g.id}">Renommer</button></div>`;
-  if (local) {
-    body += `<div class="notice">Mode local : les données sont enregistrées sur ce téléphone uniquement.
-      Pour les partager entre plusieurs téléphones, configurez le serveur (voir le guide d'installation).</div>`;
-  } else {
-    body += `<div class="panel">
-      <h3>Code d'invitation</h3>
-      <div class="code">${esc(g.code)}</div>
-      <p class="small muted" style="margin:10px 0">Les autres joueurs installent l'app puis choisissent « Rejoindre un groupe » avec ce code.
-      Toute personne qui a le code peut lire et modifier les scores du groupe.</p>
-      <div class="row"><button class="btn block" data-act="share-code">Inviter</button><button class="btn light block" data-act="copy-code">Copier</button></div>
-    </div>
-    <div class="panel" style="margin-top:12px"><dl class="dl">
-      <dt>Dernière synchronisation</dt><dd>${st.lastSync ? dateTime(st.lastSync) : 'jamais'}</dd>
-      <dt>Modifications à envoyer</dt><dd>${st.dirty.length}</dd>
-      ${st.lastError ? `<dt>Problème</dt><dd style="color:var(--red)">${esc(st.lastError)}</dd>` : ''}
-    </dl><button class="btn light block" style="margin-top:10px" data-act="sync-now">Synchroniser maintenant</button></div>`;
-  }
+  const nav = `<nav class="kind-switch stabs" aria-label="Rubriques des réglages">${SETTINGS_TABS.map(([k, label]) =>
+    `<a href="#/settings/${k}" aria-pressed="${k === tabNow}">${label}</a>`).join('')}</nav>`;
+  let body = '';
+  if (tabNow === 'groupe') {
+    body += `<div class="gname-row"><h2>${esc(g.name)}</h2>
+      <button class="link" data-act="rename-group" data-id="${g.id}">Renommer</button></div>`;
+    if (local) {
+      body += `<div class="notice">Mode local : les données sont enregistrées sur ce téléphone uniquement.
+        Pour les partager entre plusieurs téléphones, configurez le serveur (voir le guide d'installation).</div>`;
+    } else {
+      body += `<div class="panel">
+        <h3>Code d'invitation</h3>
+        <div class="code">${esc(g.code)}</div>
+        <p class="small muted" style="margin:10px 0">Les autres joueurs installent l'app puis choisissent « Rejoindre un groupe » avec ce code.
+        Toute personne qui a le code peut lire et modifier les scores du groupe.</p>
+        <div class="row"><button class="btn block" data-act="share-code">Inviter</button><button class="btn light block" data-act="copy-code">Copier</button></div>
+      </div>
+      <div class="panel" style="margin-top:12px"><dl class="dl">
+        <dt>Dernière synchronisation</dt><dd>${st.lastSync ? dateTime(st.lastSync) : 'jamais'}</dd>
+        <dt>Modifications à envoyer</dt><dd>${st.dirty.length}</dd>
+        ${st.lastError ? `<dt>Problème</dt><dd style="color:var(--red)">${esc(st.lastError)}</dd>` : ''}
+      </dl><button class="btn light block" style="margin-top:10px" data-act="sync-now">Synchroniser maintenant</button></div>`;
+    }
 
-  body += installBlock();
 
-  const tg = (k, label, hint = '') => `<label class="toggle"><input type="checkbox" data-rule="${k}" ${r[k] ? 'checked' : ''}>
+    body += `<h2>Mes groupes</h2>
+      <button class="btn light block" style="margin-bottom:10px" data-act="groups">Mes groupes (${store.listGroups().length}) · en ajouter un</button>
+      <button class="btn danger block" data-act="leave-group">${local ? 'Effacer ce groupe de ce téléphone' : 'Quitter ce groupe sur ce téléphone'}</button>
+      <p class="small muted" style="margin-top:8px">${local ? 'Toutes les parties et profils de ce téléphone seront supprimés.' : 'Les données restent sur le serveur : vous pourrez revenir avec le code.'}</p>`;
+  } else if (tabNow === 'regles') {
+    const tg = (k, label, hint = '') => `<label class="toggle"><input type="checkbox" data-rule="${k}" ${r[k] ? 'checked' : ''}>
       <span>${label}${hint ? `<br><span class="small muted">${hint}</span>` : ''}</span></label>`;
-  body += appearanceBlock();
-  body += `<h2>Règles du groupe</h2>
-    <div class="panel">
-      <div class="field" style="margin-top:0"><label for="rule-target">Score à atteindre par défaut</label>
-        <select class="input" id="rule-target" data-rule="target">
-          ${[500, 1000, 1500, 2000, 2500, 3000].map((v) => `<option value="${v}" ${r.target === v ? 'selected' : ''}>${v}</option>`).join('')}
-        </select></div>
-      <div style="margin-top:8px">
-      ${tg('allowSA', 'Sans atout autorisé')}
-      ${tg('allowTA', 'Tout atout autorisé')}
-      ${tg('rounding', 'Arrondir à la dizaine', 'Le 5 profite à l\'attaque : 85 → 90, la défense prend 160 − 90 = 70.')}
-      ${tg('contreAll', 'Contré : le gagnant prend tout (règle officielle)', 'Contrat contré : le camp qui a raison marque (160 + annonce + belote) × 2, l\'autre 0 (sauf sa belote). Surcontré : × 4. Décoché : seule l\'annonce est doublée et chacun garde ses points.')}
-      ${tg('beloteLostOnFail', 'Belote perdue si l\'attaque chute', 'Règle officielle : décoché (la belote est imprenable).')}
-      ${tg('capotUnannounced250', 'Capot non annoncé = 250 points', 'Sinon il vaut 160 comme une donne normale.')}
+    body += `<h2>Règles de la contrée</h2>
+      <div class="panel">
+        <div class="field" style="margin-top:0"><label for="rule-target">Score à atteindre par défaut</label>
+          <select class="input" id="rule-target" data-rule="target">
+            ${[500, 1000, 1500, 2000, 2500, 3000].map((v) => `<option value="${v}" ${r.target === v ? 'selected' : ''}>${v}</option>`).join('')}
+          </select></div>
+        <div style="margin-top:8px">
+        ${tg('allowSA', 'Sans atout autorisé')}
+        ${tg('allowTA', 'Tout atout autorisé')}
+        ${tg('rounding', 'Arrondir à la dizaine', 'Le 5 profite à l\'attaque : 85 → 90, la défense prend 160 − 90 = 70.')}
+        ${tg('beloteLostOnFail', 'Belote perdue si l\'attaque chute', 'Règle officielle : décoché (la belote est imprenable).')}
+        ${tg('capotUnannounced250', 'Capot non annoncé = 250 points', 'Sinon il vaut 160 comme une donne normale.')}
+        </div>
+        <div class="field"><label for="rule-fail">En cas de chute, la défense marque</label>
+          <select class="input" id="rule-fail" data-rule="failBase">
+            <option value="160" ${r.failBase === 160 ? 'selected' : ''}>160 + l'annonce</option>
+            <option value="162" ${r.failBase === 162 ? 'selected' : ''}>162 + l'annonce</option>
+            <option value="0" ${r.failBase === 0 ? 'selected' : ''}>l'annonce seule</option>
+          </select></div>
+        <p class="small muted" style="margin:12px 0 0">Ces règles s'appliquent aux nouvelles parties. Une partie déjà commencée garde les règles de son lancement.</p>
       </div>
-      <div class="field"><label for="rule-fail">En cas de chute, la défense marque</label>
-        <select class="input" id="rule-fail" data-rule="failBase">
-          <option value="160" ${r.failBase === 160 ? 'selected' : ''}>160 + l'annonce</option>
-          <option value="162" ${r.failBase === 162 ? 'selected' : ''}>162 + l'annonce</option>
-          <option value="0" ${r.failBase === 0 ? 'selected' : ''}>l'annonce seule</option>
-        </select></div>
-      <p class="small muted" style="margin:12px 0 0">Ces règles s'appliquent aux nouvelles parties. Une partie déjà commencée garde les règles de son lancement.</p>
-    </div>
 
-    <h2>Comment les points sont comptés</h2>
-    <div class="panel formula">
-      <p><code>A</code> = annonce (80 à 160, capot = 250, générale = 500), <code>m</code> = 1, ou 2 si contré, ou 4 si surcontré,
-      <code>p</code> = points de cartes faits par l'attaque (sur 162), <code>b</code> = 20 de belote.</p>
-      <p>Le contrat est <b>réussi</b> si <code>p + b(attaque) ≥ A</code>.</p>
-      <p>${r.contreAll ? 'Sans contre, réussi' : 'Réussi'} : attaque = <code>${r.contreAll ? '' : 'm × '}A + p arrondi + b</code>, défense = <code>160 − p arrondi + b</code>.</p>
-      <p>${r.contreAll ? 'Sans contre, chuté' : 'Chuté'} : attaque = 0, défense = <code>${r.failBase ? `${r.failBase} + ` : ''}${r.contreAll ? '' : 'm × '}A + b</code>.</p>
-      ${r.contreAll ? `<p><b>Contré</b> (m = 2) ou <b>surcontré</b> (m = 4) : le camp qui a raison marque <code>m × (160 + A + b)</code>, l'autre 0 (sauf sa belote, imprenable${r.beloteLostOnFail ? ' — perdue par une attaque qui chute, selon vos règles' : ''}).</p>` : ''}
-      <p class="muted">Exemple : 100 ♥, l'attaque fait 96 avec la belote → 96 + 20 = 116 ≥ 100, réussi.
-      Attaque : 100 + 100 + 20 = 220 ; défense : 60. ${r.contreAll
-        ? 'Si c\'était contré : attaque 2 × (160 + 100 + 20) = 560, défense 0. Contré et chuté (sans belote) : défense 2 × (160 + 100) = 520.'
-        : 'Si c\'était contré : 200 + 100 + 20 = 320.'}</p>
-    </div>
-
-    <h2>Règles du tarot</h2>
-    <div class="panel">
-      <div class="field" style="margin-top:0"><label for="trule-mode">Durée par défaut</label>
-        <select class="input" id="trule-mode" data-trule="mode">
-          <option value="hands" ${d.trules.mode === 'hands' ? 'selected' : ''}>Nombre de donnes fixé</option>
-          <option value="free" ${d.trules.mode === 'free' ? 'selected' : ''}>Partie libre</option>
-        </select></div>
-      <div class="field"><label for="trule-n">Nombre de donnes par défaut</label>
-        <select class="input" id="trule-n" data-trule="nHands">
-          ${[5, 10, 12, 15, 20, 25, 30].map((v) => `<option value="${v}" ${d.trules.nHands === v ? 'selected' : ''}>${v}</option>`).join('')}
-        </select></div>
-      <div style="margin-top:8px">
-        <label class="toggle"><input type="checkbox" data-trule="pabTimesK" ${d.trules.pabTimesK ? 'checked' : ''}>
-          <span>Petit au bout multiplié par le contrat<br><span class="small muted">Barème FFT. Sinon 10 points fixes.</span></span></label>
-        <label class="toggle"><input type="checkbox" data-trule="miseres" ${d.trules.miseres ? 'checked' : ''}>
-          <span>Annonces de misère</span></label>
+      <h2>Comment les points sont comptés</h2>
+      <div class="panel formula">
+        <p><code>A</code> = annonce (80 à 160, capot = 250, générale = 500), <code>m</code> = 1, ou 2 si contré, ou 4 si surcontré,
+        <code>p</code> = points de cartes faits par l'attaque (sur 162), <code>b</code> = 20 de belote.</p>
+        <p>Le contrat est <b>réussi</b> si <code>p + b(attaque) ≥ A</code>.</p>
+        <p>Sans contre, réussi : attaque = <code>A + p arrondi + b</code>, défense = <code>160 − p arrondi + b</code>.</p>
+        <p>Sans contre, chuté : attaque = 0, défense = <code>${r.failBase ? `${r.failBase} + ` : ''}A + b</code>.</p>
+        <p><b>Contré</b> (m = 2) ou <b>surcontré</b> (m = 4) : le camp qui a raison marque <code>m × (160 + A + b)</code>, l'autre 0 (sauf sa belote, imprenable${r.beloteLostOnFail ? ' — perdue par une attaque qui chute, selon vos règles' : ''}).</p>
+        <p class="muted">Exemple : 100 ♥, l'attaque fait 96 avec la belote → 96 + 20 = 116 ≥ 100, réussi.
+        Attaque : 100 + 100 + 20 = 220 ; défense : 60.
+        Si c'était contré : attaque 2 × (160 + 100 + 20) = 560, défense 0. Contré et chuté (sans belote) : défense 2 × (160 + 100) = 520.</p>
       </div>
-    </div>
-    <div class="panel formula" style="margin-top:12px">
-      <p><code>P</code> = points de l'attaque (sur 91), <code>O</code> = objectif selon les bouts (0 : 56, 1 : 51, 2 : 41, 3 : 36),
-      <code>k</code> = Petite 1, Garde 2, Garde sans 4, Garde contre 6.</p>
-      <p>Donne <code>D = ±(25 + |P − O|) × k</code> ± petit au bout (10 × k) ± poignée (20, 30, 40) + chelem.</p>
-      <p>Chaque défenseur marque <code>−D</code> ; le preneur <code>+2D</code> à 3, <code>+3D</code> à 4 ; à 5, preneur <code>+2D</code> et appelé <code>+D</code> (ou <code>+4D</code> s'il est seul).</p>
-      <p class="muted">Exemple : à 4, Garde, 2 bouts, 47 points → (25 + 6) × 2 = 62 ; preneur +186, défenseurs −62.</p>
-    </div>
 
+      <h2>Règles du tarot</h2>
+      <div class="panel">
+        <div class="field" style="margin-top:0"><label for="trule-mode">Durée par défaut</label>
+          <select class="input" id="trule-mode" data-trule="mode">
+            <option value="hands" ${d.trules.mode === 'hands' ? 'selected' : ''}>Nombre de donnes fixé</option>
+            <option value="free" ${d.trules.mode === 'free' ? 'selected' : ''}>Partie libre</option>
+          </select></div>
+        <div class="field"><label for="trule-n">Nombre de donnes par défaut</label>
+          <select class="input" id="trule-n" data-trule="nHands">
+            ${[5, 10, 12, 15, 20, 25, 30].map((v) => `<option value="${v}" ${d.trules.nHands === v ? 'selected' : ''}>${v}</option>`).join('')}
+          </select></div>
+        <div style="margin-top:8px">
+          <label class="toggle"><input type="checkbox" data-trule="pabTimesK" ${d.trules.pabTimesK ? 'checked' : ''}>
+            <span>Petit au bout multiplié par le contrat<br><span class="small muted">Barème FFT. Sinon 10 points fixes.</span></span></label>
+          <label class="toggle"><input type="checkbox" data-trule="miseres" ${d.trules.miseres ? 'checked' : ''}>
+            <span>Annonces de misère</span></label>
+        </div>
+      </div>
+      <div class="panel formula" style="margin-top:12px">
+        <p><code>P</code> = points de l'attaque (sur 91), <code>O</code> = objectif selon les bouts (0 : 56, 1 : 51, 2 : 41, 3 : 36),
+        <code>k</code> = Petite 1, Garde 2, Garde sans 4, Garde contre 6.</p>
+        <p>Donne <code>D = ±(25 + |P − O|) × k</code> ± petit au bout (10 × k) ± poignée (20, 30, 40) + chelem.</p>
+        <p>Chaque défenseur marque <code>−D</code> ; le preneur <code>+2D</code> à 3, <code>+3D</code> à 4 ; à 5, preneur <code>+2D</code> et appelé <code>+D</code> (ou <code>+4D</code> s'il est seul).</p>
+        <p class="muted">Exemple : à 4, Garde, 2 bouts, 47 points → (25 + 6) × 2 = 62 ; preneur +186, défenseurs −62.</p>
+      </div>`;
+  } else if (tabNow === 'themes') {
+    body += appearanceBlock();
+  } else {
+    body += installBlock();
+    body += `<h2>Version</h2>
+      <p class="small muted" style="margin:-4px 0 10px">Version de l'application : <b>${APP_VERSION}</b>
+      ${ui.serverBuild ? `<br>Version en ligne : <b>${ui.serverBuild}</b>${ui.serverBuild > APP_BUILD ? ' — mise à jour disponible' : ''}` : ''}</p>
+      ${EMBED ? '' : '<button class="btn light block" data-act="force-update">Forcer la mise à jour de l\'app</button>'}`;
+    body += `
     ${EMBED ? '' : `<h2>Exporter</h2>
     <div class="row"><button class="btn light block" data-act="export-stats">Stats contrée</button>
       <button class="btn light block" data-act="export-hands">Donnes contrée</button></div>
     <div class="row" style="margin-top:8px"><button class="btn light block" data-act="export-tstats">Stats tarot</button>
       <button class="btn light block" data-act="export-thands">Donnes tarot</button></div>`}
 
-    <h2>Ce téléphone</h2>
-    <button class="btn light block" style="margin-bottom:10px" data-act="groups">Mes groupes (${store.listGroups().length}) · en ajouter un</button>
-    <p class="small muted" style="margin:-4px 0 6px">Version de l'application : <b>${APP_VERSION}</b>
-      ${ui.serverBuild ? `<br>Version en ligne : <b>${ui.serverBuild}</b>${ui.serverBuild > APP_BUILD ? ' — mise à jour disponible' : ''}` : ''}</p>
-    ${EMBED ? '' : '<button class="btn light block" style="margin-bottom:10px" data-act="force-update">Forcer la mise à jour de l\'app</button>'}
-    <button class="btn danger block" data-act="leave-group">${local ? 'Effacer ce groupe de ce téléphone' : 'Quitter ce groupe sur ce téléphone'}</button>
-    <p class="small muted" style="margin-top:8px">${local ? 'Toutes les parties et profils de ce téléphone seront supprimés.' : 'Les données restent sur le serveur : vous pourrez revenir avec le code.'}</p>`;
-  return shell('Groupe', body, { active: 'settings' });
+`;
+  }
+  return shell('Réglages', nav + body, { active: 'settings' });
 }
 
 function installBlock() {
@@ -1755,9 +1799,7 @@ function previewHtml() {
   return `<div class="preview ${res.made ? 'ok' : 'ko'}">
     <div class="big">${res.made ? 'Contrat réussi' : 'Contrat chuté'} :
       <span class="p0">${teamName(game, 0)} +${res.scores[0]}</span> · <span class="p1">${teamName(game, 1)} +${res.scores[1]}</span></div>
-    <div class="small">${explain(res)}</div>
-    ${dr.coincheBy && !game.rules.contreAll ? `<div class="small contre-hint">Cette partie compte les contres avec l'ancienne règle.
-      <button class="link" data-act="toggle-contre" data-id="${game.id}">Passer à la règle officielle</button></div>` : ''}</div>`;
+    <div class="small">${explain(res)}</div></div>`;
 }
 
 function updateHandFooter() {
@@ -2000,7 +2042,7 @@ function newGameSheet() {
     <div class="field"><span class="lab">Options</span>
       <label class="toggle"><input type="checkbox" data-draft="allowSA" ${dr.allowSA ? 'checked' : ''}><span>Sans atout autorisé</span></label>
       <label class="toggle"><input type="checkbox" data-draft="allowTA" ${dr.allowTA ? 'checked' : ''}><span>Tout atout autorisé</span></label>
-      <p class="small muted" style="margin:4px 0 0">Les autres règles se règlent dans l'onglet Groupe.</p>
+      <p class="small muted" style="margin:4px 0 0">Les autres règles se règlent dans Réglages → Règles.</p>
     </div>
   </div>
   <div class="sheet-foot"><button class="btn gold block" data-act="start-game" ${full && dr.target >= 100 ? '' : 'disabled'}>Lancer la partie</button></div>`;
@@ -2867,22 +2909,6 @@ async function handle(act, el, id) {
     case 'game-view': ui.gameView = el.dataset.v; return render();
     case 'kind': setKind(el.dataset.v); ui.chartSel = null; return render();
     case 'force-update': return forceUpdate();
-    case 'toggle-contre': {
-      const g = store.get(id);
-      if (!g) return;
-      const to = !g.rules.contreAll;
-      const ok = await ask({
-        title: to ? 'Règle officielle pour cette partie ?' : 'Ancienne règle pour cette partie ?',
-        message: to
-          ? 'Donne contrée : le camp qui a raison marque (160 + annonce + belote) × 2 (× 4 si surcontré), l\'autre 0. Toutes les donnes de cette partie seront recalculées.'
-          : 'Donne contrée : seule l\'annonce est doublée et chacun garde ses points. Toutes les donnes de cette partie seront recalculées.',
-        ok: 'Recalculer',
-      });
-      if (!ok) return;
-      store.patch(id, { rules: { ...g.rules, contreAll: to } });
-      if (ui.sheet?.game?.id === id) { ui.sheet.game = store.get(id); renderSheet(); }   // saisie ouverte
-      return afterHandChange(id, 'Partie recalculée');   // le gagnant peut changer
-    }
     case 'rename-game': {
       const g = store.get(id);
       const t = await ask({ title: 'Titre de la partie', input: 'Ex. Revanche du jeudi', ok: 'Enregistrer', value: g?.title || '' });
@@ -2933,6 +2959,14 @@ async function handle(act, el, id) {
       return renderSheet();
     case 'groups': return openSheet('groups', {});
     case 'theme-set': setThemePart(el.dataset.k, el.dataset.v); return render();
+    case 'theme-pick': {
+      const th = THEMES[el.dataset.v];
+      if (!th) return;
+      if (el.dataset.v === 'classique') { try { localStorage.removeItem('fdc:theme'); localStorage.removeItem('fdc:header'); } catch { /* rien */ } }
+      else saveTheme(Object.fromEntries(THEME_KEYS.map((p) => [p, th[p]])));
+      applyTheme();
+      return render();
+    }
     case 'theme-reset': {
       try { localStorage.removeItem('fdc:theme'); localStorage.removeItem('fdc:header'); } catch { /* stockage indisponible */ }
       applyTheme();
@@ -3101,8 +3135,14 @@ document.addEventListener('input', (ev) => {
   const el = ev.target;
   if (el.id === 'join-code') { ui.joinCode = el.value; return; }
   if (el.dataset.themeFree) {   // aperçu en direct pendant qu'on choisit (sans redessiner la page)
-    const t = loadTheme(); t[el.dataset.themeFree] = el.value; applyTheme(t);
-    el.closest('.sw-free')?.style.setProperty('--c', el.value);
+    themeLive = { k: el.dataset.themeFree, v: el.value, el };
+    if (!themeLiveRaf) themeLiveRaf = requestAnimationFrame(() => {   // au plus une mise à jour par image
+      themeLiveRaf = 0;
+      const { k, v, el: inp } = themeLive;
+      const t = loadTheme(); t[k] = v; applyTheme(t);
+      inp.closest('.sw-free')?.style.setProperty('--c', v);
+      inp.closest('.th-row')?.querySelector('.th-cur')?.setAttribute('style', `--c:${v};color:${inkOn(v)}`);
+    });
     return;
   }
   if (!ui.sheet || !el.dataset.draft) return;
@@ -3145,7 +3185,13 @@ document.addEventListener('input', (ev) => {
 
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
-  if (el.dataset.themeFree) { setThemePart(el.dataset.themeFree, el.value); return render(); }
+  if (el.dataset.themeFree) {   // couleur libre validée : on enregistre sans redessiner (le sélecteur reste stable)
+    setThemePart(el.dataset.themeFree, el.value);
+    const row = el.closest('.th-row');
+    row?.querySelectorAll('.sw[data-act]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+    row?.querySelector('.sw-free')?.setAttribute('aria-pressed', 'true');
+    return;
+  }
   if (el.dataset.gchart !== undefined) {
     if (store.get(route().id)?.type === 'tarot') ui.gstatT = el.value; else ui.gstatC = el.value;
     return render();

@@ -47,13 +47,16 @@ test('défense avec belote quand le contrat passe', () => {
   assert.deepEqual(r.scores, [170, 90]);          // 80 + 90 | 70 + 20
 });
 
-test('contre ×2 et surcontre ×4 sur l\'annonce seule', () => {
+test('contre ×2 et surcontre ×4 : le gagnant prend tout, quelles que soient les règles', () => {
   let r = scoreHand(H({ bid: 100, attackPoints: 104, coincheBy: 'c' }), T);
-  assert.deepEqual(r.scores, [300, 60]);          // 2×100 + 100 | 60
+  assert.deepEqual(r.scores, [520, 0]);           // 2×(160 + 100) | 0
   r = scoreHand(H({ bid: 100, attackPoints: 104, coincheBy: 'c', surcoincheBy: 'b' }), T);
-  assert.deepEqual(r.scores, [500, 60]);          // 4×100 + 100 | 60
+  assert.deepEqual(r.scores, [1040, 0]);          // 4×(160 + 100) | 0
   r = scoreHand(H({ bid: 100, attackPoints: 70, coincheBy: 'c' }), T);
-  assert.deepEqual(r.scores, [0, 360]);           // 160 + 2×100
+  assert.deepEqual(r.scores, [0, 520]);           // 2×(160 + 100)
+  // une ancienne partie enregistrée avec contreAll: false est comptée pareil
+  r = scoreHand(H({ bid: 100, attackPoints: 70, coincheBy: 'c' }), T, { contreAll: false });
+  assert.deepEqual(r.scores, [0, 520]);
 });
 
 test('capot annoncé', () => {
@@ -134,8 +137,5 @@ test('contré, règle officielle (tout au gagnant)', () => {
   // sans contre : inchangé
   r = scoreHand({ taker: 'a', bid: 100, suit: 'H', attackPoints: 110 }, T, R);
   assert.deepEqual(r.scores, [210, 50]);
-  // ancienne règle (parties existantes) : seule l'annonce est doublée
-  r = scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 110 }, T, {});
-  assert.deepEqual(r.scores, [310, 50]);
   assert.match(explain(scoreHand({ taker: 'a', bid: 100, suit: 'H', coincheBy: 'c', attackPoints: 110 }, T, R)), /Contré réussi .* 520/);
 });

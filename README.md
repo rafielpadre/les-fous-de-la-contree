@@ -31,7 +31,7 @@ Elle s'installe sur iPhone et Android depuis le navigateur (« Ajouter à l'écr
 - **Tirage des équipes à la roue**, avec la tête de chaque joueur.
 - Saisie d'une donne en quelques touches : preneur, annonce (80 à 160, capot, générale), couleur, contre, surcontre, points faits, belote.
 - Le résultat s'affiche **avant** d'enregistrer : « Contrat réussi : Verts +210 · Orange +50 ».
-- Barème de la Fédération Française de Belote : donne contrée ou surcontrée, le camp qui a raison prend tout, (160 + annonce) × 2 ou × 4. L'ancienne façon de compter reste disponible.
+- Barème de la Fédération Française de Belote : donne contrée ou surcontrée, le camp qui a raison prend tout, (160 + annonce) × 2 ou × 4.
 - Prise à deux : quand le partenaire avait aussi annoncé, la prise compte pour les deux.
 - **Couleurs d'équipe au choix** à chaque partie (bleu, rouge, vert, orange, violet, rose, jaune, turquoise, noir) ; le nom de l'équipe suit sa couleur.
 - Score à atteindre réglable, fin de partie automatique, revanche en un geste, titre de partie (« Finale de Noël »).
@@ -64,7 +64,7 @@ Elle s'installe sur iPhone et Android depuis le navigateur (« Ajouter à l'écr
 ## Personnaliser
 
 - Le **logo** affiché à l'ouverture se change en remplaçant `img/logo.jpg` (ou en indiquant une autre image dans `js/config.js`).
-- Chacun choisit **ses couleurs** sur son téléphone (Groupe → Apparence) : bandeau du haut, fond, cartes, boutons et barre du menu, parmi des couleurs proposées ou n'importe quelle autre. Le texte passe tout seul en blanc sur une couleur foncée et en noir sur une couleur claire.
+- Chacun choisit **son thème** sur son téléphone (Réglages → Thèmes) : Classique, Tapis vert, Clair, Coloré, Pastel, Océan, Bordeaux, Nuit, Noir et or. Un réglage perso permet de changer une couleur précise ; le texte passe tout seul en blanc sur une couleur foncée et en noir sur une couleur claire.
 - Les **couleurs** de l'app (fond crème, accent vert) sont réunies dans `css/app.css`.
 
 Le détail est dans le [guide d'utilisation](docs/GUIDE.md#modifier-le-design).

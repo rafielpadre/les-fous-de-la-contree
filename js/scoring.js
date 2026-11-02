@@ -13,10 +13,11 @@
 //  d~   : points de la défense arrondis = 160 − p~
 //
 //  Contrat réussi  ⇔  p + b_a ≥ A          (capot/générale : tous les plis)
-//  Réussi : S_att = m·A + p~ + b_a          S_def = d~ + b_d
-//  Chuté  : S_att = 0                       S_def = 160 + m·A + b_d
+//  Sans contre (m = 1) :
+//  Réussi : S_att = A + p~ + b_a            S_def = d~ + b_d
+//  Chuté  : S_att = 0                       S_def = 160 + A + b_d
 //
-//  Option contreAll (règle officielle FFB) : si la donne est contrée (m ≥ 2),
+//  Donne contrée (règle officielle FFB, la seule appliquée) : si m ≥ 2,
 //  le camp qui a raison prend TOUT, et le total est multiplié :
 //    Réussi : S_att = m·(B + A + b_a)         S_def = b_d   (belote imprenable)
 //    Chuté  : S_att = b_a ou 0 (option)      S_def = m·(160 + A + b_d)
@@ -39,10 +40,9 @@ export const DEFAULT_RULES = Object.freeze({
   target: 2000,               // score à atteindre (modifiable à chaque partie)
   rounding: true,             // arrondi à la dizaine, 5 pour l'attaque
   failBase: 160,              // chute : la défense marque failBase + m·A
-  // Donne contrée : false = seule l'annonce est multipliée (anciennes parties) ;
-  // true = règle FFB, le gagnant prend tout : m × (160 + A + belote).
-  // Les nouvelles parties d'un groupe utilisent true par défaut (voir app.js).
-  contreAll: false,
+  // Donne contrée : toujours la règle FFB, le gagnant prend tout : m × (160 + A + belote).
+  // (L'ancienne règle, où seule l'annonce était multipliée, a été retirée.)
+  contreAll: true,
   beloteLostOnFail: true,     // l'attaque chutée perd sa belote
   capotUnannounced250: true,  // capot non annoncé : 250 points de cartes au lieu de 160
   allowSA: true,              // sans atout autorisé
@@ -120,7 +120,7 @@ export function scoreHand(hand, teams, rules = DEFAULT_RULES) {
   let pAtt = 0;
   let pDef = 0;
 
-  const all = m > 1 && !!r.contreAll;
+  const all = m > 1;   // contré ou surcontré : le gagnant prend tout
 
   if (made && all) {
     pAtt = capot && (announcedCapot || r.capotUnannounced250) ? 250 : 160;   // B
