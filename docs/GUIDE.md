@@ -171,9 +171,21 @@ Le logo s'affiche à l'ouverture de l'app (écran d'accueil animé, puis en haut
 
 Les icônes de l'écran d'accueil du téléphone sont dans `icons/` (192, 512 et 180 pixels pour l'iPhone).
 
-### Bandeau du haut
+### Couleurs au choix (Groupe → Apparence)
 
-Chacun choisit sur son téléphone la couleur du bandeau du haut : **Groupe → Apparence → Bandeau du haut** (clair, vert, noir, bordeaux, bleu nuit ou sauge). Le logo d'ouverture et le menu des groupes restent toujours sur fond vert.
+Chacun choisit sur son téléphone la couleur de cinq éléments, parmi 8 couleurs proposées ou n'importe quelle autre (pastille « + ») :
+
+| Élément | Ce qui change |
+|---|---|
+| Bandeau du haut | la barre de titre de chaque écran (et la barre d'état du téléphone) |
+| Fond de l'app | le fond des écrans, derrière les cartes |
+| Cartes | les cadres des parties en cours, du classement, des statistiques, des donnes, ainsi que les champs de saisie |
+| Boutons et sélection | les boutons principaux, le sélecteur Contrée / Tarot, l'onglet actif, les choix cochés |
+| Barre du menu | la barre d'onglets en bas |
+
+Le texte s'adapte tout seul : **blanc sur une couleur foncée, noir sur une couleur claire**. L'app calcule la luminance $L$ de la couleur de fond (de 0 pour le noir à 1 pour le blanc, norme WCAG) et garde celui des deux textes qui contraste le plus, avec le rapport de contraste $(L_{\max} + 0{,}05)/(L_{\min} + 0{,}05)$. Les couleurs de liens et de chiffres (vert, rouge, couleur des boutons) sont éclaircies ou foncées si besoin pour rester lisibles. « Revenir aux couleurs d'origine » remet tout comme au départ.
+
+Le logo d'ouverture, le menu des groupes et la roue du tirage restent toujours sur fond vert.
 
 ### Couleurs et formes de l'app
 
@@ -193,4 +205,4 @@ Tout l'aspect visuel est dans **`css/app.css`**. Les réglages du design actuel 
 | `--r-lg`, `--r-md` | arrondi des cartes et boutons | `18px`, `12px` |
 | `--display`, `--body` | polices des titres et du texte (début du fichier) | Anybody, Atkinson Hyperlegible |
 
-Les couleurs de bandeau proposées sont dans `HEADER_STYLES` (début de `js/app.js`) et dans les lignes `html[data-header="…"]` de `css/app.css`. Après une modification, augmentez `VERSION` dans `sw.js` (et `APP_BUILD` dans `js/app.js`) pour que les téléphones prennent la nouvelle version. Les couleurs des courbes sont dans `SERIES_COLORS` (début de `js/app.js`).
+Les couleurs proposées dans Groupe → Apparence sont dans `THEME_PARTS` (début de `js/app.js`). Après une modification, augmentez `VERSION` dans `sw.js` (et `APP_BUILD` dans `js/app.js`) pour que les téléphones prennent la nouvelle version. Les couleurs des courbes sont dans `SERIES_COLORS` (début de `js/app.js`).

@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 23;   // doit correspondre à 'fdc-v23' dans sw.js
-const APP_VERSION = `${APP_BUILD} — roue du tirage`;
+const APP_BUILD = 24;   // doit correspondre à 'fdc-v24' dans sw.js
+const APP_VERSION = `${APP_BUILD} — couleurs au choix`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -251,7 +251,7 @@ function render() {
     store.setPolling(false);
     return;
   }
-  setMetaTheme(HEADER_STYLES[headerStyle()].c);
+  setMetaTheme(headerColor());
   ui.bindQueue = [];
   let page;
   switch (r.name) {
@@ -336,25 +336,120 @@ function showPhoto(src, name) {
 // ------------------------------------------------------------ icônes et style du bandeau
 const TAB_ICONS = {home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="6.5" width="11" height="14" rx="2.2"/><path d="M8.5 3.5h9.3a2.2 2.2 0 0 1 2.2 2.2v12.8"/><path d="M9 11.2c0-1.3 1.6-1.7 2.2-.6.6-1.1 2.2-.7 2.2.6 0 1.4-2.2 2.6-2.2 2.6s-2.2-1.2-2.2-2.6z"/></svg>`, players: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.4 6.5-5.4s5.7 1.9 6.5 5.4"/><path d="M15.5 5.2a3.4 3.4 0 0 1 0 6.6"/><path d="M18.3 14.9c1.6.8 2.7 2.4 3.2 5.1"/></svg>`, charts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V4"/><path d="M4 20h16"/><path d="M7.5 15l3.5-4 3 3 5.5-6.5"/></svg>`, history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`, settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>`};
 
-/** Styles de bandeau proposés (Groupe → Apparence), mémorisés sur ce téléphone. */
-const HEADER_STYLES = {
-  clair: { label: 'Clair', c: '#faf7f1' },
-  vert: { label: 'Vert', c: '#1d5a3c' },
-  noir: { label: 'Noir', c: '#26221c' },
-  bordeaux: { label: 'Bordeaux', c: '#6b2232' },
-  nuit: { label: 'Bleu nuit', c: '#1e2b45' },
-  sauge: { label: 'Sauge', c: '#6f8f7a' },
+// ------------------------------------------------------------ couleurs de l'app (Groupe → Apparence)
+// Chaque élément a une couleur au choix, mémorisée sur ce téléphone (localStorage 'fdc:theme').
+// Le texte posé dessus passe automatiquement en blanc (fond foncé) ou en noir (fond clair).
+const THEME_PARTS = {
+  header: { label: 'Bandeau du haut', def: '#faf7f1', presets: [['Clair', '#faf7f1'], ['Vert', '#1d5a3c'], ['Noir', '#26221c'], ['Bordeaux', '#6b2232'], ['Bleu nuit', '#1e2b45'], ['Sauge', '#6f8f7a'], ['Bleu', '#2f55d4'], ['Terracotta', '#b5532f']] },
+  paper: { label: "Fond de l'app", def: '#f6f2ea', presets: [['Crème', '#f6f2ea'], ['Blanc', '#ffffff'], ['Gris perle', '#eceef1'], ['Vert pâle', '#e5efe7'], ['Sable', '#eee2cc'], ['Vert tapis', '#1d5a3c'], ['Bleu nuit', '#18223a'], ['Anthracite', '#1d1d21']] },
+  card: { label: 'Cartes (parties, classement, stats…)', def: '#ffffff', presets: [['Blanc', '#ffffff'], ['Crème', '#fcf8f0'], ['Vert pâle', '#e9f4ec'], ['Bleu pâle', '#e7edfb'], ['Rose pâle', '#fbe8ee'], ['Vert foncé', '#24503a'], ['Bleu nuit', '#26314d'], ['Anthracite', '#2c2c31']] },
+  accent: { label: 'Boutons et sélection', def: '#1f7a4c', presets: [['Vert', '#1f7a4c'], ['Bleu', '#2f55d4'], ['Bordeaux', '#8a2537'], ['Violet', '#6b3fc4'], ['Orange', '#d0661b'], ['Turquoise', '#0b8797'], ['Noir', '#26221c'], ['Or', '#e3ad2f']] },
+  tabs: { label: 'Barre du menu', def: '#ffffff', presets: [['Blanc', '#ffffff'], ['Crème', '#faf5ea'], ['Vert', '#1d5a3c'], ['Noir', '#26221c'], ['Bleu nuit', '#1e2b45'], ['Bordeaux', '#6b2232'], ['Sauge', '#6f8f7a'], ['Gris', '#e9eaed']] },
 };
-function headerStyle() {
-  try { const k = localStorage.getItem('fdc:header'); return HEADER_STYLES[k] ? k : 'clair'; } catch { return 'clair'; }
+const OLD_HEADERS = { clair: '#faf7f1', vert: '#1d5a3c', noir: '#26221c', bordeaux: '#6b2232', nuit: '#1e2b45', sauge: '#6f8f7a' };
+const isHex = (c) => /^#[0-9a-f]{6}$/i.test(c || '');
+function loadTheme() {
+  let t = {};
+  try { t = JSON.parse(localStorage.getItem('fdc:theme') || '{}') || {}; } catch { t = {}; }
+  if (!t.header) { try { const old = OLD_HEADERS[localStorage.getItem('fdc:header')]; if (old) t.header = old; } catch { /* rien */ } }
+  const out = {};
+  for (const [k, part] of Object.entries(THEME_PARTS)) out[k] = isHex(t[k]) ? t[k].toLowerCase() : part.def;
+  return out;
 }
+function saveTheme(t) { try { localStorage.setItem('fdc:theme', JSON.stringify(t)); } catch { /* stockage indisponible */ } }
+
+// --- Calcul des couleurs de texte
+const rgbOf = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const hexOf = (rgb) => '#' + rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+/** Mélange : t = 0 → a, t = 1 → b. */
+const mix = (a, b, t) => { const A = rgbOf(a), B = rgbOf(b); return hexOf(A.map((v, i) => v + (B[i] - v) * t)); };
+/** Luminance relative (norme WCAG) : 0 = noir, 1 = blanc. */
+function luminance(h) {
+  const [r, g, b] = rgbOf(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+/** Rapport de contraste entre deux couleurs : de 1 (identiques) à 21 (noir sur blanc). */
+const contrast = (a, b) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+const INK_DARK = '#26221c', INK_LIGHT = '#ffffff';
+/** Texte lisible sur le fond bg : blanc ou noir, celui qui contraste le plus. */
+const inkOn = (bg) => (contrast(bg, INK_LIGHT) >= contrast(bg, INK_DARK) ? INK_LIGHT : INK_DARK);
+const isDark = (bg) => inkOn(bg) === INK_LIGHT;
+/** Éclaircit ou fonce fg jusqu'à un contraste d'au moins min sur bg. */
+function readable(fg, bg, min) {
+  const target = inkOn(bg);
+  let c = fg;
+  for (let t = 0.1; contrast(c, bg) < min && t <= 1; t += 0.1) c = mix(fg, target, t);
+  return c;
+}
+/** Couleurs de texte, traits et boutons adaptées à un fond donné. */
+function surfaceVars(bg, accent) {
+  const ink = inkOn(bg), dark = ink === INK_LIGHT;
+  const brand = readable(dark ? accent : mix(accent, '#000000', 0.12), bg, 4.5);
+  return {
+    ink, 'ink-2': mix(ink, bg, 0.18), muted: mix(ink, bg, dark ? 0.32 : 0.42), line: mix(bg, ink, dark ? 0.16 : 0.1),
+    red: readable('#d7263d', bg, 3.2), green: readable('#12936a', bg, 3.2),
+    brand, 'brand-2': accent, 'brand-soft': mix(accent, bg, dark ? 0.72 : 0.86),
+    'on-brand': inkOn(brand), 'on-brand-2': inkOn(accent),
+  };
+}
+const THEME_VARS = ['ink', 'ink-2', 'muted', 'line', 'red', 'green', 'brand', 'brand-2', 'brand-soft', 'on-brand', 'on-brand-2'];
 const BRAND_GREEN = '#1d5a3c';   // ouverture et menu des groupes : toujours sur fond vert
 function setMetaTheme(c) { document.querySelector('meta[name="theme-color"]')?.setAttribute('content', c); }
-function applyHeaderStyle(k = headerStyle()) {
-  document.documentElement.dataset.header = k;
-  setMetaTheme(HEADER_STYLES[k].c);
+const isDefaultTheme = (t) => Object.entries(THEME_PARTS).every(([k, p]) => t[k] === p.def);
+function applyTheme(t = loadTheme()) {
+  const st = document.documentElement.style;
+  const names = ['paper', 'card', 'tabs-bg', 'hdr-bg', 'hdr-solid', 'hdr-ink', 'hdr-sub', 'hdr-chip', 'hdr-line',
+    ...['p', 'c', 't'].flatMap((pre) => THEME_VARS.map((v) => `${pre}-${v}`))];
+  names.forEach((n) => st.removeProperty(`--${n}`));
+  delete document.documentElement.dataset.header;
+  if (!isDefaultTheme(t)) {
+    // Bandeau
+    if (t.header !== THEME_PARTS.header.def) {
+      const ink = inkOn(t.header), dark = ink === INK_LIGHT;
+      st.setProperty('--hdr-bg', t.header); st.setProperty('--hdr-solid', t.header);
+      st.setProperty('--hdr-ink', ink); st.setProperty('--hdr-sub', mix(ink, t.header, 0.25));
+      st.setProperty('--hdr-chip', mix(t.header, ink, dark ? 0.15 : 0.07));
+      st.setProperty('--hdr-line', dark ? 'transparent' : mix(t.header, ink, 0.1));
+    }
+    // Fond, cartes, barre du menu : chacun avec ses couleurs de texte
+    st.setProperty('--paper', t.paper); st.setProperty('--card', t.card); st.setProperty('--tabs-bg', t.tabs);
+    for (const [pre, bg] of [['p', t.paper], ['c', t.card], ['t', t.tabs]]) {
+      const v = surfaceVars(bg, t.accent);
+      THEME_VARS.forEach((k) => st.setProperty(`--${pre}-${k}`, v[k]));
+    }
+  }
+  setMetaTheme(t.header);
 }
-applyHeaderStyle();
+/** Couleur de la barre d'état du téléphone (= bandeau). */
+const headerColor = () => loadTheme().header;
+applyTheme();
+
+/** Groupe → Apparence : une ligne de pastilles par élément, plus une couleur libre. */
+function appearanceBlock() {
+  const t = loadTheme();
+  const rows = Object.entries(THEME_PARTS).map(([k, part]) => {
+    const isPreset = part.presets.some(([, c]) => c === t[k]);
+    return `<div class="th-row"><div class="th-head"><span class="lab">${part.label}</span>
+        <span class="th-cur" style="--c:${t[k]};color:${inkOn(t[k])}">Aa</span></div>
+      <div class="th-sw" role="group" aria-label="${esc(part.label)}">
+        ${part.presets.map(([name, c]) => `<button class="sw" data-act="theme-set" data-k="${k}" data-v="${c}" style="--c:${c}" aria-pressed="${t[k] === c}" title="${name}" aria-label="${name}"></button>`).join('')}
+        <label class="sw sw-free" title="Autre couleur" aria-pressed="${!isPreset}" style="--c:${isPreset ? 'transparent' : t[k]}">
+          <input type="color" data-theme-free="${k}" value="${t[k]}" aria-label="Autre couleur : ${esc(part.label)}"><span aria-hidden="true">+</span></label>
+      </div></div>`;
+  }).join('');
+  return `<h2>Apparence</h2>
+    <div class="panel th-panel">
+      ${rows}
+      <p class="small muted" style="margin:12px 0 0">Le texte passe tout seul en blanc sur une couleur foncée et en noir sur une couleur claire. Réglage propre à ce téléphone.</p>
+      <button class="btn light block" style="margin-top:12px" data-act="theme-reset" ${isDefaultTheme(t) ? 'disabled' : ''}>Revenir aux couleurs d'origine</button>
+    </div>`;
+}
+function setThemePart(k, c) {
+  const t = loadTheme();
+  t[k] = c.toLowerCase();
+  saveTheme(t);
+  applyTheme(t);
+}
 
 // ------------------------------------------------------------ logo et écran d'ouverture
 // Logo de l'app : fichier img/logo.svg par défaut ; pour en changer, remplacez ce fichier
@@ -381,7 +476,7 @@ function showSplash() {
     setTimeout(() => {
       el.remove();
       document.documentElement.classList.remove('splashing');
-      if (!ui.launch && store.getState().group) applyHeaderStyle();
+      if (!ui.launch && store.getState().group) applyTheme();
     }, 450);
   };
   el.addEventListener('click', close);
@@ -570,7 +665,7 @@ function gameCard(e) {
     ? `Victoire des ${teamName(g, e.winner)} · ${date(g.finishedAt || g.startedAt)}`
     : `${e.hands.length} donne${e.hands.length > 1 ? 's' : ''} · objectif ${g.rules.target}`;
   return `
-    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px;${teamVars(g)}">
+    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;margin-bottom:10px;${teamVars(g)}">
       ${titleLine(g)}
       <div class="row">
         <div class="av-pair">${g.teams[0].map((id) => avatar(P(id), 's')).join('')}</div>
@@ -639,7 +734,7 @@ function gamePage(id) {
       const s = d.stats.get(pid);
       what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takeMadePct)} · Contres ${pct(s.coinchePct)}<br>Prend ${pct(s.takeRate)} des donnes` : '';
     }
-    return `<a class="mini t${ti}" href="#/gplayer/${g.id}/${pid}" style="text-decoration:none;color:inherit">
+    return `<a class="mini t${ti}" href="#/gplayer/${g.id}/${pid}" style="text-decoration:none;">
       <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
   }).join('');
   body += '</div>';
@@ -1404,13 +1499,7 @@ function settingsPage() {
 
   const tg = (k, label, hint = '') => `<label class="toggle"><input type="checkbox" data-rule="${k}" ${r[k] ? 'checked' : ''}>
       <span>${label}${hint ? `<br><span class="small muted">${hint}</span>` : ''}</span></label>`;
-  const hk = headerStyle();
-  body += `<h2>Apparence</h2>
-    <div class="panel">
-      <span class="lab" style="display:block;font-weight:700;margin-bottom:8px">Bandeau du haut</span>
-      <div class="hdr-picks">${Object.entries(HEADER_STYLES).map(([k, h]) => `<button class="hdr-pick" data-act="header-style" data-v="${k}" aria-pressed="${k === hk}"><i style="--c:${h.c}"></i>${h.label}</button>`).join('')}</div>
-      <p class="small muted" style="margin:10px 0 0">Réglage propre à ce téléphone.</p>
-    </div>`;
+  body += appearanceBlock();
   body += `<h2>Règles du groupe</h2>
     <div class="panel">
       <div class="field" style="margin-top:0"><label for="rule-target">Score à atteindre par défaut</label>
@@ -2070,7 +2159,7 @@ function tarotGameCard(e) {
     ? `Gagnée par ${e.order.filter((p) => e.rank[p] === 1).map((p) => esc(P(p).name)).join(' et ')} · ${date(g.finishedAt || g.startedAt)}`
     : tarotProgress(e);
   return `
-    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;color:inherit;margin-bottom:10px">
+    <a class="panel" href="#/game/${g.id}" style="display:block;text-decoration:none;margin-bottom:10px">
       ${titleLine(g)}
       <div class="tcard">
         ${e.order.map((pid) => `<div class="tcard-row">${avatar(P(pid), 's')}<span class="nm">${esc(P(pid).name)}</span>
@@ -2145,7 +2234,7 @@ function tarotGamePage(id) {
       const s = S.get(pid);
       what = s ? `Victoires ${pct(s.winPct)} sur ${s.games}<br>Prises ${pct(s.takePct)} · place ${num(s.avgRank, 1)}<br>Prend ${pct(s.takeRate)} des donnes` : '';
     }
-    return `<a class="mini" href="#/gplayer/${g.id}/${pid}" style="text-decoration:none;color:inherit">
+    return `<a class="mini" href="#/gplayer/${g.id}/${pid}" style="text-decoration:none;">
       <span class="who">${avatar(p, 's')}<span>${esc(p.name)}</span></span><span class="what">${what}</span></a>`;
   }).join('');
   body += '</div>';
@@ -2843,9 +2932,10 @@ async function handle(act, el, id) {
       toast('Lien retiré');
       return renderSheet();
     case 'groups': return openSheet('groups', {});
-    case 'header-style': {
-      try { localStorage.setItem('fdc:header', el.dataset.v); } catch { /* stockage indisponible */ }
-      applyHeaderStyle(el.dataset.v);
+    case 'theme-set': setThemePart(el.dataset.k, el.dataset.v); return render();
+    case 'theme-reset': {
+      try { localStorage.removeItem('fdc:theme'); localStorage.removeItem('fdc:header'); } catch { /* stockage indisponible */ }
+      applyTheme();
       return render();
     }
     case 'photo-zoom': {
@@ -3010,6 +3100,11 @@ function fixHandDraft(dr, teams) {
 document.addEventListener('input', (ev) => {
   const el = ev.target;
   if (el.id === 'join-code') { ui.joinCode = el.value; return; }
+  if (el.dataset.themeFree) {   // aperçu en direct pendant qu'on choisit (sans redessiner la page)
+    const t = loadTheme(); t[el.dataset.themeFree] = el.value; applyTheme(t);
+    el.closest('.sw-free')?.style.setProperty('--c', el.value);
+    return;
+  }
   if (!ui.sheet || !el.dataset.draft) return;
   const k = el.dataset.draft;
   const dr = ui.sheet.draft;
@@ -3050,6 +3145,7 @@ document.addEventListener('input', (ev) => {
 
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
+  if (el.dataset.themeFree) { setThemePart(el.dataset.themeFree, el.value); return render(); }
   if (el.dataset.gchart !== undefined) {
     if (store.get(route().id)?.type === 'tarot') ui.gstatT = el.value; else ui.gstatC = el.value;
     return render();

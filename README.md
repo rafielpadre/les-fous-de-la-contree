@@ -28,6 +28,7 @@ Elle s'installe sur iPhone et Android depuis le navigateur (« Ajouter à l'écr
 
 ### Compter les points de la contrée
 
+- **Tirage des équipes à la roue**, avec la tête de chaque joueur.
 - Saisie d'une donne en quelques touches : preneur, annonce (80 à 160, capot, générale), couleur, contre, surcontre, points faits, belote.
 - Le résultat s'affiche **avant** d'enregistrer : « Contrat réussi : Verts +210 · Orange +50 ».
 - Barème de la Fédération Française de Belote : donne contrée ou surcontrée, le camp qui a raison prend tout, (160 + annonce) × 2 ou × 4. L'ancienne façon de compter reste disponible.
@@ -63,7 +64,7 @@ Elle s'installe sur iPhone et Android depuis le navigateur (« Ajouter à l'écr
 ## Personnaliser
 
 - Le **logo** affiché à l'ouverture se change en remplaçant `img/logo.jpg` (ou en indiquant une autre image dans `js/config.js`).
-- Chacun choisit la **couleur du bandeau** sur son téléphone (Groupe → Apparence) : clair, vert, noir, bordeaux, bleu nuit ou sauge.
+- Chacun choisit **ses couleurs** sur son téléphone (Groupe → Apparence) : bandeau du haut, fond, cartes, boutons et barre du menu, parmi des couleurs proposées ou n'importe quelle autre. Le texte passe tout seul en blanc sur une couleur foncée et en noir sur une couleur claire.
 - Les **couleurs** de l'app (fond crème, accent vert) sont réunies dans `css/app.css`.
 
 Le détail est dans le [guide d'utilisation](docs/GUIDE.md#modifier-le-design).
