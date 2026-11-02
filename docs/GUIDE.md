@@ -5,7 +5,8 @@ Retour à la [présentation](../README.md) · [Installation](INSTALLATION.md)
 
 ## Utilisation
 
-- **Nouvelle partie** : touchez 4 joueurs. Les deux premiers forment la première équipe, les deux suivants la seconde. Vous pouvez aussi tirer les équipes au sort, choisir la couleur de chaque équipe (bleu et rouge au départ), puis le score à atteindre.
+- **Nouvelle partie** : touchez 4 joueurs. Les deux premiers forment la première équipe, les deux suivants la seconde. Vous pouvez aussi tirer les équipes à la roue (voir ci-dessous), choisir la couleur de chaque équipe (bleu et rouge au départ), puis le score à atteindre.
+- **Tirage à la roue** : une fois les 4 joueurs choisis, « Tirer les équipes à la roue » ouvre une roue avec la tête de chaque joueur. Premier lancer : le joueur qui ouvre la première équipe ; second lancer, parmi les trois restants : son partenaire ; les deux derniers forment l'autre équipe. On lance en touchant « Lancer » ou en faisant tourner la roue du doigt. Les trois répartitions possibles ont chacune une chance sur trois. À la fin : « Garder ces équipes » ou « Relancer ».
 - **Nouvelle donne**, après chaque main, indiquez :
   - le preneur, l'annonce et la couleur ;
   - le contre et le surcontre éventuels ;

@@ -785,3 +785,59 @@ main { padding-bottom: calc(170px + var(--safe-b)); }
 
 /* Logo image carrée (ex. img/logo.jpg) : coins arrondis façon icône d'app */
 .splash-logo, .brand-logo { border-radius: 22%; }
+
+/* ---------- Roue du tirage des équipes ---------- */
+.wheel-ov {
+  position: fixed; inset: 0; z-index: 96; display: grid; place-items: center; padding: 20px;
+  padding-top: calc(20px + var(--safe-t)); padding-bottom: calc(20px + var(--safe-b));
+  background: var(--brand); color: #fff; overflow-y: auto; animation: lb-in .2s ease both;
+}
+.wheel-ov.out { opacity: 0; transition: opacity .2s; }
+.wd-box { position: relative; width: min(100%, 400px); text-align: center; }
+.wd-box h3 { margin: 0; padding: 0 36px; font: 800 clamp(20px, 6vw, 26px)/1.1 var(--display); }
+.wd-step { font-size: clamp(13px, 4vw, 16px); }
+.wd-step { margin: 6px 0 18px; font-weight: 700; opacity: .9; min-height: 1.3em; }
+.wd-hint { opacity: .65; margin: 14px 0 0; }
+.wd-x { position: absolute; top: -6px; right: -4px; width: 40px; height: 40px; border: 0; border-radius: 50%;
+  background: rgba(255,255,255,.14); color: #fff; font-size: 26px; line-height: 1; cursor: pointer; }
+.wheel-wrap { position: relative; width: min(78vw, 310px); aspect-ratio: 1; margin: 0 auto; container-type: inline-size; }
+.wheel {
+  position: absolute; inset: 0; border-radius: 50%; overflow: hidden; touch-action: none;
+  box-shadow: 0 0 0 6px #fff, 0 0 0 9px rgba(0,0,0,.12), 0 22px 50px -18px rgba(0,0,0,.6);
+}
+.wsep { position: absolute; left: 50%; top: 0; width: 2px; height: 50%; margin-left: -1px; background: rgba(255,255,255,.75); transform-origin: 50% 100%; }
+.wl { position: absolute; inset: 0; pointer-events: none; }
+.wl-in {
+  position: absolute; left: 50%; top: 8%; transform: translateX(-50%); width: 40%;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; color: #fff;
+}
+.wl-face { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 100%; }
+.wl-in .av { --s: 20cqw; box-shadow: 0 0 0 3px rgba(255,255,255,.9); }
+.wl-in b { font-size: max(11px, 4.5cqw); line-height: 1.1; max-width: 31cqw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.wl.win .wl-in { animation: wl-win .9s ease both; }
+@keyframes wl-win { 0%, 100% { transform: translateX(-50%) scale(1); } 40% { transform: translateX(-50%) scale(1.25); } }
+.wpointer {
+  position: absolute; left: 50%; top: -14px; z-index: 3; width: 30px; height: 38px; margin-left: -15px;
+  background: #fff; clip-path: polygon(50% 100%, 0 0, 100% 0); filter: drop-shadow(0 3px 4px rgba(0,0,0,.35));
+  transform-origin: 50% 0;
+}
+.wpointer.tick { animation: wp-tick .12s ease-out; }
+@keyframes wp-tick { 0% { transform: rotate(0); } 40% { transform: rotate(-16deg); } 100% { transform: rotate(0); } }
+.whub {
+  position: absolute; left: 50%; top: 50%; z-index: 2; width: 27%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  border: 0; border-radius: 50%; background: #fff; color: var(--brand); font: 800 max(13px, 5.2cqw)/1 var(--display);
+  box-shadow: 0 6px 18px -6px rgba(0,0,0,.5); cursor: pointer;
+}
+.whub:disabled { color: var(--muted, #8a8275); }
+.wd-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 24px; }
+.wd-team { border-radius: 16px; padding: 10px; display: grid; gap: 6px; background: rgba(255,255,255,.1); border-top: 5px solid var(--team0); }
+.wd-team.t1 { border-top-color: var(--team1); }
+.wd-team h4 { margin: 0 0 2px; font: 800 15px/1.2 var(--display); }
+.wd-p { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 8px; border-radius: 12px; background: #fff; color: var(--ink); text-align: left; }
+.wd-p b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wd-p.empty { justify-content: center; background: rgba(255,255,255,.12); color: rgba(255,255,255,.6); font-weight: 800; }
+.wd-p.pop { animation: wd-pop .35s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes wd-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.wheel-ov .btn.light { background: rgba(255,255,255,.16); color: #fff; border-color: transparent; }
+.wheel-ov .btn.gold { background: #fff; color: var(--brand); }
+@media (prefers-reduced-motion: reduce) { .wpointer.tick, .wl.win .wl-in, .wd-p.pop { animation: none; } }

@@ -17,8 +17,8 @@ import {
 import { computeTarotStats, evaluateTarot, tarotTimeline, TAROT_TIMELINE_STATS } from './tarot-stats.js';
 
 // Numéro de version affiché dans l'onglet Groupe (pour vérifier une mise à jour)
-const APP_BUILD = 22;   // doit correspondre à 'fdc-v22' dans sw.js
-const APP_VERSION = `${APP_BUILD} — nouveau design`;
+const APP_BUILD = 23;   // doit correspondre à 'fdc-v23' dans sw.js
+const APP_VERSION = `${APP_BUILD} — roue du tirage`;
 const app = document.getElementById('app');
 const sheetRoot = document.getElementById('sheet');
 const overlayRoot = document.getElementById('overlay');
@@ -1722,6 +1722,156 @@ function afterHandChange(gameId, message, undoId = null) {
   toast(message, undoId ? { label: 'Annuler', act: 'undo-hand', id: undoId } : null);
 }
 
+// ---------- Tirage des équipes à la roue
+/** Entier aléatoire uniforme dans [0, n[ (générateur du navigateur si disponible). */
+function randInt(n) {
+  if (window.crypto?.getRandomValues) {
+    const a = new Uint32Array(1);
+    const lim = Math.floor(0x100000000 / n) * n; // rejet : pas de biais vers les petites valeurs
+    do window.crypto.getRandomValues(a); while (a[0] >= lim);
+    return a[0] % n;
+  }
+  return Math.floor(Math.random() * n);
+}
+
+/**
+ * Roue de tirage au sort des équipes (contrée).
+ * Lancer 1 : parmi les 4 joueurs, celui qui ouvre l'équipe 1.
+ * Lancer 2 : parmi les 3 restants, son partenaire. Les deux derniers forment l'équipe 2.
+ * Chaque répartition (A,B | C,D) sort donc avec la même probabilité.
+ * Renvoie une promesse : les 4 joueurs dans l'ordre des places, ou null si annulé.
+ */
+function wheelDraw(players, draft) {
+  return new Promise((resolve) => {
+    const quick = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const DUR = quick ? 700 : 4200;
+    const el = document.createElement('div');
+    el.className = 'wheel-ov';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-label', 'Tirage des équipes');
+    el.setAttribute('style', teamVars(draft));
+    document.body.appendChild(el);
+
+    let pool = [...players];      // joueurs encore sur la roue
+    let picked = [];              // ordre de sortie
+    let rot = 0;                  // rotation actuelle (degrés, sens horaire)
+    let spinning = false;
+    let raf = 0;
+
+    const slotHtml = (pid, ti) => pid
+      ? `<span class="wd-p pop">${avatar(P(pid), 's')}<b>${esc(P(pid).name)}</b></span>`
+      : `<span class="wd-p empty">?</span>`;
+    const teamsHtml = () => {
+      const done = picked.length === 2;
+      const t1 = done ? pool : [null, null];
+      return `<div class="wd-teams">
+        <div class="wd-team t0"><h4>${teamName(draft, 0)}</h4>${slotHtml(picked[0], 0)}${slotHtml(picked[1], 0)}</div>
+        <div class="wd-team t1"><h4>${teamName(draft, 1)}</h4>${slotHtml(t1[0], 1)}${slotHtml(t1[1], 1)}</div></div>`;
+    };
+    const wheelHtml = () => {
+      const n = pool.length, seg = 360 / n;
+      const WHEEL_COLS = ['#1f7a4c', '#d0731c', '#2f55d4', '#c2337a'];
+      const cols = pool.map((_, i) => WHEEL_COLS[i % WHEEL_COLS.length]);
+      const grad = pool.map((pid, i) => `${cols[i]} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
+      const labels = pool.map((pid, i) => `<div class="wl" style="transform:rotate(${(i + 0.5) * seg}deg)">
+          <div class="wl-in"><div class="wl-face" style="transform:rotate(${-(i + 0.5) * seg}deg)">${avatar(P(pid), 's')}<b>${esc(P(pid).name)}</b></div></div></div>`).join('');
+      const lines = pool.map((_, i) => `<i class="wsep" style="transform:rotate(${i * seg}deg)"></i>`).join('');
+      return `<div class="wheel-wrap"><div class="wpointer" aria-hidden="true"></div>
+        <div class="wheel" style="background:conic-gradient(${grad});transform:rotate(${rot}deg)">${lines}${labels}</div>
+        <button class="whub" data-w="spin" ${spinning ? 'disabled' : ''}>${spinning ? '…' : 'Lancer'}</button></div>`;
+    };
+    const stepText = () => picked.length === 0 ? `Lancer 1 sur 2 · qui ouvre les ${teamName(draft, 0)} ?`
+      : picked.length === 1 ? `Lancer 2 sur 2 · qui joue avec ${esc(P(picked[0]).name)} ?`
+        : `Les ${teamName(draft, 0)} contre les ${teamName(draft, 1)} !`;
+    const render = () => {
+      const done = picked.length === 2;
+      el.innerHTML = `<div class="wd-box">
+        <button class="wd-x" data-w="cancel" aria-label="Fermer">×</button>
+        <h3>Tirage des équipes</h3>
+        <p class="wd-step" aria-live="polite">${stepText()}</p>
+        ${done ? '' : wheelHtml()}
+        ${teamsHtml()}
+        ${done ? `<div class="row" style="margin-top:16px"><button class="btn light block" data-w="again">Relancer</button>
+          <button class="btn gold block" data-w="ok">Garder ces équipes</button></div>`
+          : `<p class="small wd-hint">Touchez « Lancer » ou faites tourner la roue du doigt</p>`}
+      </div>`;
+    };
+    const close = (v) => {
+      cancelAnimationFrame(raf);
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 200);
+      resolve(v);
+    };
+
+    // « Tic » du pointeur à chaque passage d'une case
+    const watch = (wheel, pointer, n) => {
+      let last = -1;
+      const tick = () => {
+        const m = getComputedStyle(wheel).transform;
+        if (m && m !== 'none') {
+          const [a, b] = m.slice(m.indexOf('(') + 1).split(',').map(parseFloat);
+          const ang = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
+          const idx = Math.floor((((360 - ang) % 360) / 360) * n);
+          if (last !== -1 && idx !== last) {
+            pointer.classList.remove('tick'); void pointer.offsetWidth; pointer.classList.add('tick');
+          }
+          last = idx;
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    };
+
+    const spin = () => {
+      if (spinning || picked.length >= 2) return;
+      spinning = true;
+      const n = pool.length, seg = 360 / n;
+      const k = randInt(n);
+      // Angle visé dans la case k (loin des bords), puis rotation pour l'amener sous le pointeur (en haut).
+      const target = (k + 0.15 + 0.7 * Math.random()) * seg;
+      const turns = quick ? 1 : 5 + randInt(3);
+      const delta = turns * 360 + ((360 - target - (rot % 360)) % 360 + 360) % 360;
+      rot += delta;
+      const wheel = el.querySelector('.wheel');
+      const pointer = el.querySelector('.wpointer');
+      el.querySelector('.whub').disabled = true;
+      el.querySelector('.whub').textContent = '…';
+      wheel.style.transition = `transform ${DUR}ms cubic-bezier(.14,.72,.12,1)`;
+      requestAnimationFrame(() => { wheel.style.transform = `rotate(${rot}deg)`; });
+      watch(wheel, pointer, n);
+      setTimeout(() => {
+        cancelAnimationFrame(raf);
+        navigator.vibrate?.(30);
+        wheel.querySelectorAll('.wl')[k]?.classList.add('win');
+        setTimeout(() => {
+          picked.push(pool[k]);
+          pool = pool.filter((_, i) => i !== k);
+          rot = 0;
+          spinning = false;
+          render();
+        }, quick ? 300 : 900);
+      }, DUR + 50);
+    };
+
+    // Lancer d'un geste : glisser le doigt sur la roue
+    let sx = null, sy = null;
+    el.addEventListener('pointerdown', (e) => { if (e.target.closest('.wheel')) { sx = e.clientX; sy = e.clientY; } });
+    el.addEventListener('pointerup', (e) => {
+      if (sx !== null && Math.hypot(e.clientX - sx, e.clientY - sy) > 30) spin();
+      sx = sy = null;
+    });
+    el.addEventListener('click', (e) => {
+      const w = e.target.closest('[data-w]')?.dataset.w;
+      if (w === 'spin') spin();
+      else if (w === 'cancel' && !spinning) close(null);
+      else if (w === 'again') { pool = [...players]; picked = []; rot = 0; render(); }
+      else if (w === 'ok') close([picked[0], picked[1], pool[0], pool[1]]);
+    });
+    render();
+  });
+}
+
 // ---------- Nouvelle partie
 function newGameSheet() {
   const dr = ui.sheet.draft;
@@ -1749,7 +1899,7 @@ function newGameSheet() {
             ${taken ? 'disabled' : ''} title="${c.name}" aria-label="${c.name}"></button>`;
         }).join('')}</div>`).join('')}
     </div>
-    <div class="row" style="margin-top:10px"><button class="btn light" data-act="shuffle" ${full ? '' : 'disabled'} style="flex:1">Tirer les équipes au sort</button></div>
+    <div class="row" style="margin-top:10px"><button class="btn light" data-act="shuffle" ${full ? '' : 'disabled'} style="flex:1">Tirer les équipes à la roue</button></div>
     <div class="field"><span class="lab">Joueurs</span><div class="pick">
       ${d.players.map((p) => `<button data-act="pick" data-v="${p.id}" aria-pressed="${dr.slots.includes(p.id)}">${avatar(p, 's')}${esc(p.name)}</button>`).join('')}
       <button data-act="add-player-inline" style="padding:8px 14px">+ Nouveau joueur</button>
@@ -2590,12 +2740,10 @@ async function handle(act, el, id) {
     }
     case 'slot': sh.draft.slots[Number(el.dataset.v)] = null; return renderSheet();
     case 'shuffle': {
-      const s = [...sh.draft.slots];
-      for (let i = s.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [s[i], s[j]] = [s[j], s[i]];
-      }
-      sh.draft.slots = s;
+      if (!sh.draft.slots.every(Boolean)) return;
+      const res = await wheelDraw([...sh.draft.slots], sh.draft);
+      if (!res || ui.sheet !== sh) return;
+      sh.draft.slots = res;
       return renderSheet();
     }
     case 'add-player-inline': {
